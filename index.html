@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ekran quizu</title>
-<script src="config.js?v=5"></script>
-<script src="brand.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="brand.js?v=6"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -321,17 +321,32 @@
     return out;
   }
   // Pytania: wersja z edytora (edytor.html, ta sama przeglądarka) albo z config.js
-  const getQText = () => store.get(LS.questions) || CFG.questions || '';
+  // Pytania z edytora są na serwerze (quiz/<pokój>/questions); bez nich — wersja z config.js
+  let serverQText = null;
+  const toArrQ = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
+  function listToText(list){
+    return toArrQ(list).filter(q => q && q.ok).map(q => {
+      const lines = [String(q.prompt || '').replace(/\s+/g, ' ').trim() + (q.limit && q.limit !== SC.timeLimitSec ? ' [' + q.limit + 's]' : '')];
+      if (q.image) lines.push('[zdjęcie] ' + q.image);
+      const imgs = toArrQ(q.images);
+      toArrQ(q.answers).forEach((a, i) => {
+        const txt = String(a || '').replace(/\s+/g, ' ').trim().replace(/^\*+/, '').replace(/\[img\]/g, '');
+        const img = imgs[i];
+        lines.push((i === q.correct ? '*' : '') + (img ? (txt ? txt + ' ' : '') + '[img] ' + img : txt));
+      });
+      return lines.join('\n');
+    }).join('\n\n');
+  }
+  const getQText = () => serverQText != null ? serverQText : (CFG.questions || '');
   function updateQCount(){
     const n = parseQuestions(getQText()).length;
-    $('qCount').textContent = (lang === 'pl' ? 'Pytań w quizie: ' : 'Questions in quiz: ') + n + (store.get(LS.questions) ? (lang === 'pl' ? ' (z edytora)' : ' (from editor)') : '');
+    $('qCount').textContent = (lang === 'pl' ? 'Pytań w quizie: ' : 'Questions in quiz: ') + n + (serverQText != null ? (lang === 'pl' ? ' (z edytora)' : ' (from editor)') : '');
   }
-  // Edytor w drugim oknie zapisuje pytania — ekran odświeża je na bieżąco
-  window.addEventListener('storage', e => {
-    if (e.key !== LS.questions) return;
-    if (state !== 'question' && state !== 'reveal'){ if (state !== 'lobby') questions = parseQuestions(getQText()); }
+  function onQuestionsChanged(){
+    // w trakcie pytania / odpowiedzi nie podmieniamy listy — nowe pytania wejdą od następnego
+    if (state !== 'question' && state !== 'reveal' && state !== 'lobby') questions = parseQuestions(getQText());
     updateQCount(); updateControls();
-  });
+  }
 
   /* ---------- PUNKTACJA ---------- */
   function pointsFor(ms, limitMs){
@@ -619,8 +634,9 @@
   $('btnBoard').addEventListener('click', () => { renderBoard(); state = 'board'; show('vBoard'); questions = parseQuestions(getQText()); updateControls(); });
   // Edytor otwiera się w osobnym oknie, żeby publiczność na projektorze nie widziała odpowiedzi
   $('btnEditor').addEventListener('click', () => {
-    const w = window.open('edytor.html', 'quizEditor', 'width=1100,height=850');
-    if (!w) location.href = 'edytor.html';
+    const url = 'edytor.html?room=' + encodeURIComponent(ROOM);
+    const w = window.open(url, 'quizEditor', 'width=1100,height=850');
+    if (!w) location.href = url;
   });
   $('btnNew').addEventListener('click', () => {
     if (!confirm(t('confirmNew'))) return;
@@ -707,6 +723,11 @@
   else if (!CFG.firebase || !CFG.firebase.databaseURL){ showConn('err', t('oldCfg')); }
   else if (initServer()){
     showConn('wait');
+    room.child('questions').on('value', s => {
+      const v = s.val();
+      serverQText = v && v.list ? listToText(v.list) : null;
+      onQuestionsChanged();
+    }, dbErr);
     loadScores().then(() => { listenPlayers(); showLobby(); });
   }
 })();

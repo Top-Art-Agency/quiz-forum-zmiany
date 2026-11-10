@@ -59,10 +59,10 @@ Wszystkie liczby zmienisz w `config.js` → `scoring`.
 **Najprościej:** w lobby kliknij **EDYTUJ PYTANIA**. Edytor otwiera się w osobnym oknie (przeciągnij je na ekran laptopa, żeby publiczność nie widziała odpowiedzi).
 - **+ Dodaj pytanie**, wpisz treść i odpowiedzi, zaznacz **poprawna**, wybierz czas.
 - Pytania można przesuwać ↑ ↓, duplikować i usuwać; do 6 odpowiedzi na pytanie.
-- Zmiany zapisują się same i od razu trafiają na ekran quizu, także w trakcie gry (nowe pytania na końcu pojawią się po bieżącym).
+- Zmiany zapisują się same **na serwerze** i od razu trafiają na ekran quizu na dowolnym komputerze, także w trakcie gry (nowe pytania na końcu pojawią się po bieżącym).
 - **Zdjęcia (opcjonalne):** 🖼 *Dodaj zdjęcie* pod treścią pytania oraz ikonka 🖼 przy każdej odpowiedzi. Odpowiedź może być samym zdjęciem. Zdjęcia są automatycznie zmniejszane, żeby szybko docierały na telefony. Zamiast wgrywać plik możesz też podać link albo nazwę pliku wgranego do repo (🔗).
 - **Tryb tekstowy** pozwala wkleić lub skopiować całą listę naraz.
-- Zmiany są zapamiętane **w tej przeglądarce na tym komputerze**. Żeby były na stałe, kliknij **Pobierz config.js** i podmień ten plik na GitHubie.
+- GitHub nie jest potrzebny do zmiany pytań. **Pobierz config.js** zapisuje kopię zapasową pytań w pliku; **Przywróć z config.js** wraca do pytań z pliku.
 
 Ręcznie w `config.js` → `questions`:
 

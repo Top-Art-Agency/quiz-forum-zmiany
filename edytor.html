@@ -4,8 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Edytor pytań</title>
-<script src="config.js?v=5"></script>
-<script src="brand.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="brand.js?v=6"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -92,9 +94,9 @@
 
 <main>
   <div class="note">
-    Zmiany <b>zapisują się automatycznie</b> i od razu trafiają na ekran quizu otwarty <b>w tej samej przeglądarce na tym komputerze</b>
+    Zmiany <b>zapisują się automatycznie na serwerze</b> i od razu trafiają na ekran quizu — na <b>dowolnym komputerze</b>
     (także w trakcie gry: nowe pytania na końcu listy pojawią się po aktualnym). Zaznacz ✓ przy poprawnej odpowiedzi. <b>Zdjęcia są opcjonalne</b> — do pytania i do każdej odpowiedzi (🖼); odpowiedź może być samym zdjęciem.
-    Żeby zmiany zostały na stałe (inny komputer, inna przeglądarka), kliknij <b>Pobierz config.js</b> i podmień ten plik na GitHubie.
+    <b>Pobierz config.js</b> to tylko kopia zapasowa pytań w pliku — nie trzeba go wgrywać na GitHub.
   </div>
   <div id="list"></div>
   <button class="add-big" id="btnAdd">+ Dodaj pytanie</button>
@@ -169,27 +171,51 @@
   }
 
   let qs = parse(store.get(KEY) || CFG.questions || '');
-  const fromEditor = () => !!store.get(KEY);
+  let onServer = false;            // czy pytania są już zapisane na serwerze
+  const fromEditor = () => onServer;
+
+  /* ---- serwer: pytania w Firebase, widoczne na każdym komputerze ---- */
+  const ROOM = String(new URLSearchParams(location.search).get('room') || CFG.roomId || 'quiz').replace(/[^\w-]/g, '');
+  let qRef = null, myLastWrite = 0, serverOk = false;
+  const toArr = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
+  function normalize(list){
+    return toArr(list).filter(Boolean).map(q => {
+      const answers = toArr(q.answers).map(a => a == null ? '' : String(a));
+      const images = toArr(q.images).map(a => a || '');
+      while (images.length < answers.length) images.push('');
+      return { prompt:String(q.prompt || ''), image:q.image || '', answers, images:images.slice(0, answers.length),
+               correct: typeof q.correct === 'number' ? q.correct : -1, limit: q.limit || DEF };
+    });
+  }
+  function toServer(){ return qs.map(q => ({ prompt:q.prompt, image:q.image || '', answers:q.answers, images:(q.images || []).map(x => x || ''), correct:q.correct, limit:q.limit, ok: !problems(q).length })); }
 
   /* ---- zapis ---- */
-  let saveT = null;
+  let saveT = null, saving = false;
+  const myId = Math.random().toString(36).slice(2, 10);
   function save(){
     clearTimeout(saveT);
     saveT = setTimeout(() => {
       // do quizu trafiają tylko kompletne pytania (niekompletne zostają w edytorze jako szkic w pamięci)
-      const okSave = store.set(KEY, serialize(qs.filter(q => !problems(q).length)));
-      // szkic (z niekompletnymi pytaniami) trzymamy tylko, gdy jest potrzebny — bez dublowania zdjęć
+      // kopia zapasowa w przeglądarce (gdyby zabrakło internetu)
+      store.set(KEY, serialize(qs.filter(q => !problems(q).length)));
       if (qs.some(q => problems(q).length)) store.set(KEY + '_draft', JSON.stringify(qs)); else store.del(KEY + '_draft');
+      if (qRef){
+        saving = true; renderStatus();
+        myLastWrite = Date.now();
+        qRef.set({ list: toServer(), updatedAt: firebase.database.ServerValue.TIMESTAMP, by: myId })
+          .then(() => { onServer = true; serverOk = true; saving = false; renderStatus(); })
+          .catch(e => { saving = false; serverOk = false; renderStatus();
+            toast('⚠ Nie udało się zapisać na serwerze (' + (e.code || e.message) + '). Zmiany są tylko w tej przeglądarce.', true); });
+      }
       renderStatus();
-      if (!okSave) toast('⚠ Brak miejsca w przeglądarce — zmniejsz/usuń zdjęcia albo wrzuć je jako pliki do repo i podaj nazwę pliku', true);
     }, 250);
   }
   function renderStatus(){
     const ok = qs.filter(q => !problems(q).length).length, bad = qs.length - ok;
     const st = $('status');
     st.className = 'st' + (bad ? ' warn' : '');
-    st.innerHTML = (bad ? '<b>' + bad + ' do poprawienia</b> · ' : '<b>✓ zapisano</b> · ') +
-      ok + ' pytań w quizie' + (fromEditor() ? '' : ' (z config.js)');
+    const where = !qRef ? ' (tylko w tej przeglądarce)' : saving ? '' : onServer ? ' · na serwerze, widoczne na każdym komputerze' : ' (z config.js)';
+    st.innerHTML = (bad ? '<b>' + bad + ' do poprawienia</b> · ' : saving ? '<b>zapisywanie…</b> · ' : '<b>✓ zapisano</b> · ') + ok + ' pytań w quizie' + where;
   }
   // przywróć niezapisany szkic (np. pytania z brakami), jeśli pasuje do zapisanej wersji
   try{
@@ -293,6 +319,8 @@
   $('btnRestore').addEventListener('click', () => {
     if (!confirm('Zastąpić wszystkie pytania wersją z config.js? Zmiany z edytora przepadną.')) return;
     store.del(KEY); store.del(KEY + '_draft');
+    if (qRef) qRef.remove().catch(() => {});
+    onServer = false;
     qs = parse(CFG.questions || ''); render(); renderStatus(); toast('Przywrócono pytania z config.js');
   });
   $('btnDownload').addEventListener('click', async () => {
@@ -337,6 +365,31 @@
   function toast(m, bad){ const t = $('toast'); t.textContent = m; t.style.background = bad ? 'var(--wrong)' : ''; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), bad ? 5000 : 2200); }
 
   render();
+
+  function initServer(){
+    if (typeof firebase === 'undefined' || !CFG.firebase){ renderStatus(); return; }
+    try{ firebase.initializeApp(CFG.firebase); qRef = firebase.database().ref('quiz/' + ROOM + '/questions'); }
+    catch(e){ qRef = null; renderStatus(); return; }
+    $('status').innerHTML = 'Wczytywanie pytań z serwera…';
+    let first = true;
+    qRef.on('value', snap => {
+      const v = snap.val();
+      if (first){
+        first = false;
+        if (v && v.list){ qs = normalize(v.list); onServer = true; render(); }
+        else if (store.get(KEY)){ save(); toast('Przeniesiono pytania z tej przeglądarki na serwer'); }   // stare zmiany z edytora
+        else renderStatus();
+        serverOk = true; return;
+      }
+      // zmiany z innego komputera — wczytaj, jeśli nikt tu akurat nie pisze
+      if (!v){ return; }
+      if (v.by === myId || saving || saveT && Date.now() - myLastWrite < 1500) return;
+      const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('list').contains(document.activeElement);
+      if (typing) return;
+      qs = normalize(v.list); onServer = true; render(); toast('Wczytano zmiany z innego komputera');
+    }, e => { toast('⚠ Brak dostępu do serwera (' + (e.code || e.message) + ')', true); qRef = null; renderStatus(); });
+  }
+  initServer();
 })();
 </script>
 </body>
