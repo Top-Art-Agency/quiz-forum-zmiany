@@ -7,8 +7,8 @@ window.QUIZ_CONFIG = {
   /* ---------- BRANDING ---------- */
   eventName: 'Forum Odpowiedzialnej Zmiany',
   tagline:   'Quiz · Poznań, 17 listopada 2026',
-  logo:      'assets/logo.svg',       // ścieżka do logo (SVG/PNG); '' = brak logo
-  kv:        'assets/kv.jpg',         // tło ekranu lobby (KV eventu); '' = brak
+  logo:      'logo.svg',       // ścieżka do logo (SVG/PNG); '' = brak logo
+  kv:        'kv.jpg',         // tło ekranu lobby (KV eventu); '' = brak
   colors: {
     bg:       '#06254A',   // tło (granat z KV)
     surface:  '#0E3463',   // karty / panele
@@ -22,7 +22,7 @@ window.QUIZ_CONFIG = {
   // Kolory kafli odpowiedzi A/B/C/D (na ekranie i telefonie)
   answerColors: ['#1999E1', '#0B5FA8', '#2FB5A8', '#5B6CD8'],
   fonts: {
-    googleFontsUrl: 'assets/fonts.css',   // arkusz z fontami (lokalny albo link do Google Fonts)
+    googleFontsUrl: 'fonts.css',   // arkusz z fontami (lokalny albo link do Google Fonts)
     heading: "'Barlow Condensed', 'Arial Narrow', sans-serif",
     headingStyle: 'italic',
     body:    "'Poppins', system-ui, sans-serif"
@@ -45,6 +45,9 @@ window.QUIZ_CONFIG = {
   // Format: pytanie w pierwszej linii, odpowiedzi pod spodem,
   // poprawną oznacz gwiazdką *. Pusta linia = kolejne pytanie.
   // Opcjonalnie na końcu linii pytania: [30s] = własny limit czasu.
+  // Opcjonalne zdjęcia: druga linia „[zdjęcie] plik.jpg” (zdjęcie pytania),
+  // przy odpowiedzi „Tekst [img] plik.jpg” albo samo „[img] plik.jpg”.
+  // Plik wgraj do repo obok index.html albo podaj pełny link https://…
   // UWAGA: jeśli pytania były edytowane na ekranie (przycisk PYTANIA),
   // przeglądarka pamięta tamtą wersję — „PRZYWRÓĆ Z CONFIG” wraca do tej.
   questions: `Jaka słynna wiralowa akcja z 2014 roku wspierała walkę z chorobą ALS?
