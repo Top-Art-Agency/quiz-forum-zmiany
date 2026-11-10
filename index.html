@@ -46,10 +46,11 @@
   .lobby-join p{ color:var(--muted); font-size:15px; text-align:center; max-width:320px; }
   #qr{ background:#fff; padding:14px; border-radius:16px; }
   #qr img, #qr canvas{ display:block; width:min(34vh, 300px) !important; height:auto !important; }
-  #joinUrl{ font-size:12px; color:var(--muted); word-break:break-all; max-width:330px; text-align:center; }
+  #joinUrl{ font-size:13px; color:var(--wrong); max-width:330px; text-align:center; }
+  #joinUrl:empty{ display:none; }
+  .qr-wait{ width:min(34vh, 300px); aspect-ratio:1; display:flex; align-items:center; justify-content:center; text-align:center; color:#555; font-size:15px; padding:20px; }
   .lobby-players{ flex:1; min-width:0; display:flex; flex-direction:column; gap:14px; }
   #kvImg{ align-self:flex-start; max-width:100%; width:auto; height:auto; max-height:44vh; object-fit:contain; border-radius:20px; border:1px solid var(--line); flex:0 0 auto; }
-  body.editing #kvImg{ display:none; }
   .ed-actions{ display:flex; gap:8px; }
   .lobby-players h3{ font-family:var(--font-heading); font-size:22px; font-weight:800; }
   .lobby-players h3 span{ color:var(--accent); }
@@ -59,9 +60,6 @@
   .chip.off{ opacity:.4; }
   @keyframes pop{ from{ transform:scale(.6); opacity:0; } to{ transform:scale(1); opacity:1; } }
   .empty{ color:var(--muted); font-size:16px; }
-  #editorWrap{ display:none; flex-direction:column; gap:8px; }
-  #editorWrap.on{ display:flex; }
-  #quizText{ width:100%; min-height:230px; background:var(--surface); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px; font:13px/1.55 ui-monospace, Menlo, monospace; resize:vertical; outline:none; }
   .hint{ font-size:12px; color:var(--muted); line-height:1.6; }
   #restoreNote{ font-size:13px; color:var(--accent); }
 
@@ -86,6 +84,13 @@
   .opt .T{ flex:1; position:relative; z-index:1; }
   .opt .cnt{ position:relative; z-index:1; font-weight:800; }
   .opt .fill{ position:absolute; inset:0 auto 0 0; background:rgba(0,0,0,.18); width:0; transition:width .8s ease; }
+  .qimg-wrap{ display:none; flex:1; min-width:0; height:100%; max-height:100%; align-items:center; justify-content:center; }
+  .qimg-wrap.on{ display:flex; }
+  .qimg-wrap img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.35); }
+  .r-mid{ flex:1; min-height:0; display:flex; justify-content:center; }
+  .opt .oimg{ position:relative; z-index:1; flex:0 0 auto; height:min(12vh, 110px); width:min(12vh, 110px); object-fit:cover; border-radius:10px; background:rgba(255,255,255,.15); margin:-8px 0; }
+  .opt.img-only .oimg{ height:min(16vh, 150px); width:auto; max-width:70%; aspect-ratio:auto; object-fit:contain; margin:-10px auto; }
+  .opt.img-only .T{ display:none; }
   .opt0{ background:var(--a0); } .opt1{ background:var(--a1); } .opt2{ background:var(--a2); } .opt3{ background:var(--a3); }
   .opt4{ background:#7A8A99; } .opt5{ background:#56606B; }
   #vReveal .opt.dim{ opacity:.28; }
@@ -168,11 +173,7 @@
       <h3><span id="tPlayers">Gracze</span> · <span id="lobbyCount">0</span></h3>
       <div id="restoreNote"></div>
       <div id="playerChips"><div class="empty" id="tNoPlayers">Czekamy na pierwszych graczy…</div></div>
-      <div id="editorWrap">
-        <textarea id="quizText" spellcheck="false"></textarea>
-        <div class="hint" id="tHint"></div>
-        <div class="ed-actions"><button class="btn ghost" id="btnRestoreQ">PRZYWRÓĆ Z CONFIG</button><span class="hint" id="qCount"></span></div>
-      </div>
+      <div class="hint" id="qCount"></div>
     </div>
   </section>
 
@@ -185,6 +186,7 @@
         <svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44" fill="none" stroke-width="10"/><circle class="bar" id="timerBar" cx="50" cy="50" r="44" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="0"/></svg>
         <div class="num" id="timerNum">20</div>
       </div>
+      <div class="qimg-wrap" id="qImgWrap"><img id="qImg" alt=""></div>
       <div class="answered"><div class="big" id="ansCount">0</div><div class="lbl" id="tAnswers">odpowiedzi</div></div>
     </div>
     <div class="opts" id="qOpts"></div>
@@ -195,7 +197,7 @@
     <div class="q-top"><div class="q-progress" id="rProg"></div></div>
     <div class="q-text" id="rText"></div>
     <div class="round-top" id="roundTop"></div>
-    <div style="flex:1"></div>
+    <div class="r-mid"><div class="qimg-wrap" id="rImgWrap"><img id="rImg" alt=""></div></div>
     <div class="opts" id="rOpts"></div>
   </section>
 
@@ -216,7 +218,7 @@
 <div id="controls">
   <button class="btn" id="btnMain">ROZPOCZNIJ</button>
   <button class="btn ghost" id="btnBoard" hidden>RANKING</button>
-  <button class="btn ghost" id="btnEditor">PYTANIA</button>
+  <button class="btn ghost" id="btnEditor">EDYTUJ PYTANIA</button>
   <button class="btn ghost" id="btnCsv" hidden>EKSPORT CSV</button>
   <button class="btn ghost" id="btnNew">NOWA GRA</button>
   <span class="kbd" id="tKbd">spacja / → = dalej</span>
@@ -237,23 +239,23 @@
     pl:{ players:'graczy', join:'Dołącz do gry!', joinSub:'Zeskanuj kod telefonem, wpisz swoje imię i czekaj na pierwsze pytanie.',
       playersH:'Gracze', noPlayers:'Czekamy na pierwszych graczy…', question:'PYTANIE', answers:'odpowiedzi', pts:'pkt',
       start:'ROZPOCZNIJ QUIZ', resume:'KONTYNUUJ OD PYTANIA ', reveal:'POKAŻ ODPOWIEDŹ', board:'RANKING', next:'NASTĘPNE PYTANIE',
-      final:'POKAŻ ZWYCIĘZCÓW', back:'WRÓĆ DO LOBBY', editor:'PYTANIA', hideEditor:'UKRYJ PYTANIA', csv:'EKSPORT CSV', newGame:'NOWA GRA',
+      final:'POKAŻ ZWYCIĘZCÓW', back:'WRÓĆ DO LOBBY', editor:'EDYTUJ PYTANIA', csv:'EKSPORT CSV', newGame:'NOWA GRA',
       kbd:'spacja / → = dalej', boardT:'Ranking', finalT:'Zwycięzcy!', nobody:'Nikt nie odpowiedział poprawnie 😅',
       fastest:'Najszybsi:', colPos:'#', colName:'Gracz', colPts:'Punkty', colTime:'Czas',
       hint:'<b>Format:</b> pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką *. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Pytania zapisują się automatycznie w tej przeglądarce.',
       noQ:'Nie rozpoznano żadnego pytania — sprawdź format.', confirmNew:'Wyzerować wyniki i zacząć nową grę?',
       restored:n=>'Przywrócono wyniki poprzedniej sesji ('+n+' graczy). „NOWA GRA” zaczyna od zera.',
-      peerErr:'Błąd połączenia: ' },
+      peerErr:'Błąd połączenia: ', reconnecting:'Łączenie z serwerem gry…', connectingSrv:'Łączenie z serwerem gry…' },
     en:{ players:'players', join:'Join the game!', joinSub:'Scan the code with your phone, enter your name and wait for the first question.',
       playersH:'Players', noPlayers:'Waiting for the first players…', question:'QUESTION', answers:'answers', pts:'pts',
       start:'START QUIZ', resume:'CONTINUE FROM QUESTION ', reveal:'REVEAL ANSWER', board:'LEADERBOARD', next:'NEXT QUESTION',
-      final:'SHOW WINNERS', back:'BACK TO LOBBY', editor:'QUESTIONS', hideEditor:'HIDE QUESTIONS', csv:'EXPORT CSV', newGame:'NEW GAME',
+      final:'SHOW WINNERS', back:'BACK TO LOBBY', editor:'EDIT QUESTIONS', csv:'EXPORT CSV', newGame:'NEW GAME',
       kbd:'space / → = next', boardT:'Leaderboard', finalT:'Winners!', nobody:'Nobody got it right 😅',
       fastest:'Fastest:', colPos:'#', colName:'Player', colPts:'Points', colTime:'Time',
       hint:'<b>Format:</b> question on the first line, answers below (one per line), mark the correct one with *. A blank line separates questions. Optional <b>[30s]</b> at the end of a question = custom time limit. Questions are saved automatically in this browser.',
       noQ:'No question recognised — check the format.', confirmNew:'Reset scores and start a new game?',
       restored:n=>'Restored scores from the previous session ('+n+' players). "NEW GAME" starts from scratch.',
-      peerErr:'Connection error: ' }
+      peerErr:'Connection error: ', reconnecting:'Connecting to the game server…', connectingSrv:'Connecting to the game server…' }
   };
   let lang = CFG.defaultLang === 'en' ? 'en' : 'pl';
   const t = k => STR[lang][k];
@@ -274,6 +276,14 @@
   };
 
   /* ---------- PYTANIA ---------- */
+  // Akceptujemy zdjęcia jako plik z repo (np. foto.jpg), link https lub obraz wgrany w edytorze (data:image)
+  function safeSrc(src){
+    src = String(src || '').trim();
+    if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i.test(src)) return src;
+    if (/^https?:\/\/[^\s"'<>]+$/i.test(src)) return src;
+    if (/^[\w\-./%]+\.(png|jpe?g|gif|webp|svg)$/i.test(src) && !src.includes('..')) return src;
+    return null;
+  }
   function parseQuestions(text){
     const out = [];
     text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).forEach(block => {
@@ -282,18 +292,35 @@
       let prompt = lines[0], limit = SC.timeLimitSec;
       const m = prompt.match(/\[(\d+)\s*s?\]\s*$/i);
       if (m){ limit = Math.max(5, parseInt(m[1], 10)); prompt = prompt.slice(0, m.index).trim(); }
-      const options = []; let correctIndex = -1;
-      lines.slice(1, 7).forEach(l => {
-        if (l.startsWith('*')){ correctIndex = options.length; options.push(l.slice(1).trim()); }
-        else options.push(l);
+      // opcjonalne zdjęcie pytania: druga linia „[zdjęcie] adres”
+      let image = null, rest = lines.slice(1);
+      if (rest.length && /^\[zdj[eę]cie\]/i.test(rest[0])){ image = safeSrc(rest[0].replace(/^\[zdj[eę]cie\]\s*/i, '')); rest = rest.slice(1); }
+      const options = [], optionImages = []; let correctIndex = -1;
+      rest.slice(0, 6).forEach(l => {
+        if (l.startsWith('*')){ correctIndex = options.length; l = l.slice(1).trim(); }
+        // opcjonalne zdjęcie odpowiedzi: „tekst [img] adres” albo samo „[img] adres”
+        let txt = l, img = null;
+        const k = l.indexOf('[img]');
+        if (k >= 0){ txt = l.slice(0, k).trim(); img = safeSrc(l.slice(k + 5).trim()); }
+        options.push(txt); optionImages.push(img);
       });
       if (correctIndex < 0 || options.length < 2) return;
-      out.push({ prompt, options, correctIndex, limit });
+      out.push({ prompt, image, options, optionImages, correctIndex, limit });
     });
     return out;
   }
-  $('quizText').value = store.get(LS.questions) || CFG.questions || '';
-  $('quizText').addEventListener('input', () => store.set(LS.questions, $('quizText').value));
+  // Pytania: wersja z edytora (edytor.html, ta sama przeglądarka) albo z config.js
+  const getQText = () => store.get(LS.questions) || CFG.questions || '';
+  function updateQCount(){
+    const n = parseQuestions(getQText()).length;
+    $('qCount').textContent = (lang === 'pl' ? 'Pytań w quizie: ' : 'Questions in quiz: ') + n + (store.get(LS.questions) ? (lang === 'pl' ? ' (z edytora)' : ' (from editor)') : '');
+  }
+  // Edytor w drugim oknie zapisuje pytania — ekran odświeża je na bieżąco
+  window.addEventListener('storage', e => {
+    if (e.key !== LS.questions) return;
+    if (state !== 'question' && state !== 'reveal'){ if (state !== 'lobby') questions = parseQuestions(getQText()); }
+    updateQCount(); updateControls();
+  });
 
   /* ---------- PUNKTACJA ---------- */
   function pointsFor(ms, limitMs){
@@ -328,7 +355,7 @@
   function broadcast(fn){ players.forEach(p => { if (p.online) send(p, typeof fn === 'function' ? fn(p) : fn); }); }
   function questionMsg(){
     const q = questions[round.qi];
-    return { type:'question', qid:round.qi, qIndex:round.qi, qTotal:questions.length, prompt:q.prompt, options:q.options,
+    return { type:'question', qid:round.qi, qIndex:round.qi, qTotal:questions.length, prompt:q.prompt, image:q.image, options:q.options, optionImages:q.optionImages,
              limitMs:round.limitMs, remainingMs:Math.max(0, round.limitMs - (performance.now() - round.startAt)) };
   }
   function stateMsgFor(p){
@@ -384,13 +411,20 @@
     return q.options.map((o, i) => {
       const c = counts ? counts[i] || 0 : null;
       const w = counts && total ? Math.round(c / total * 100) : 0;
-      return '<div class="opt opt' + i + (counts ? (i === q.correctIndex ? ' ok' : ' dim') : '') + '">' +
+      const img = q.optionImages && q.optionImages[i];
+      return '<div class="opt opt' + i + (img ? ' has-img' : '') + (img && !o ? ' img-only' : '') + (counts ? (i === q.correctIndex ? ' ok' : ' dim') : '') + '">' +
         (counts ? '<div class="fill" data-w="' + w + '"></div>' : '') +
-        '<div class="L"><span>' + LETTERS[i] + '</span></div><div class="T">' + esc(o) + '</div>' +
+        '<div class="L"><span>' + LETTERS[i] + '</span></div>' +
+        (img ? '<img class="oimg" src="' + esc(img) + '" alt="">' : '') +
+        '<div class="T">' + esc(o) + '</div>' +
         (counts ? '<div class="cnt">' + c + '</div>' : '') + '</div>';
     }).join('');
   }
 
+  function setImg(imgId, wrapId, src){
+    $(wrapId).classList.toggle('on', !!src);
+    if (src) $(imgId).src = src; else $(imgId).removeAttribute('src');
+  }
   function startQuestion(){
     const q = questions[qIndex];
     round = { qi:qIndex, startAt:performance.now(), limitMs:q.limit * 1000, answers:new Map() };
@@ -399,6 +433,7 @@
     $('qPts').textContent = SC.maxPoints + ' ' + t('pts');
     $('qText').textContent = q.prompt;
     $('qOpts').innerHTML = optsHtml(q);
+    setImg('qImg', 'qImgWrap', q.image);
     $('ansCount').textContent = '0';
     show('vQuestion');
     broadcast(questionMsg());
@@ -436,6 +471,7 @@
     $('rProg').textContent = t('question') + ' ' + (round.qi + 1) + ' / ' + questions.length;
     $('rText').textContent = q.prompt;
     $('rOpts').innerHTML = optsHtml(q, counts, round.answers.size);
+    setImg('rImg', 'rImgWrap', q.image);
     requestAnimationFrame(() => requestAnimationFrame(() =>
       document.querySelectorAll('#rOpts .fill').forEach(f => f.style.width = f.dataset.w + '%')));
 
@@ -489,7 +525,7 @@
 
   /* ---------- PRZYCISKI ---------- */
   function mainLabel(){
-    if (state === 'lobby') return (qIndex > 0 && qIndex < parseQuestions($('quizText').value).length) ? t('resume') + (qIndex + 1) : t('start');
+    if (state === 'lobby') return (qIndex > 0 && qIndex < parseQuestions(getQText()).length) ? t('resume') + (qIndex + 1) : t('start');
     if (state === 'question') return t('reveal');
     if (state === 'reveal') return t('board');
     if (state === 'board') return qIndex < questions.length ? t('next') : t('final');
@@ -499,8 +535,8 @@
     $('btnMain').textContent = mainLabel();
     $('btnBoard').hidden = !(state === 'lobby' && ranked().some(p => p.score > 0));
     $('btnBoard').textContent = t('board');
-    $('btnEditor').hidden = state !== 'lobby';
-    $('btnEditor').textContent = $('editorWrap').classList.contains('on') ? t('hideEditor') : t('editor');
+    $('btnEditor').hidden = !(state === 'lobby' || state === 'board');
+    $('btnEditor').textContent = t('editor');
     $('btnCsv').hidden = !(state === 'final' || state === 'board' || state === 'lobby') || !ranked().length;
     $('btnCsv').textContent = t('csv');
     $('btnNew').textContent = t('newGame');
@@ -508,22 +544,23 @@
   }
   function mainAction(){
     if (state === 'lobby'){
-      questions = parseQuestions($('quizText').value);
+      questions = parseQuestions(getQText());
       if (!questions.length){ alert(t('noQ')); return; }
       if (qIndex >= questions.length) qIndex = 0;
-      $('editorWrap').classList.remove('on'); document.body.classList.remove('editing'); $('restoreNote').textContent = '';
+      $('restoreNote').textContent = '';
       startQuestion();
     } else if (state === 'question') reveal();
     else if (state === 'reveal') showBoard();
-    else if (state === 'board') { if (qIndex < questions.length) startQuestion(); else showFinal(); }
+    else if (state === 'board') { questions = parseQuestions(getQText()); if (qIndex < questions.length) startQuestion(); else showFinal(); }
     else if (state === 'final') showLobby();
   }
   $('btnMain').addEventListener('click', mainAction);
-  $('btnBoard').addEventListener('click', () => { renderBoard(); state = 'board'; show('vBoard'); questions = parseQuestions($('quizText').value); updateControls(); });
-  $('btnEditor').addEventListener('click', () => { $('editorWrap').classList.toggle('on'); document.body.classList.toggle('editing', $('editorWrap').classList.contains('on')); updateQCount(); updateControls(); });
-  function updateQCount(){ const n = parseQuestions($('quizText').value).length; $('qCount').textContent = (lang === 'pl' ? 'Rozpoznane pytania: ' : 'Recognised questions: ') + n; }
-  $('quizText').addEventListener('input', updateQCount);
-  $('btnRestoreQ').addEventListener('click', () => { $('quizText').value = CFG.questions || ''; store.del(LS.questions); updateQCount(); updateControls(); });
+  $('btnBoard').addEventListener('click', () => { renderBoard(); state = 'board'; show('vBoard'); questions = parseQuestions(getQText()); updateControls(); });
+  // Edytor otwiera się w osobnym oknie, żeby publiczność na projektorze nie widziała odpowiedzi
+  $('btnEditor').addEventListener('click', () => {
+    const w = window.open('edytor.html', 'quizEditor', 'width=1100,height=850');
+    if (!w) location.href = 'edytor.html';
+  });
   $('btnNew').addEventListener('click', () => {
     if (!confirm(t('confirmNew'))) return;
     players.forEach((p, pid) => { if (!p.online) players.delete(pid); else Object.assign(p, { score:0, timeMs:0, correct:0, lastGain:0 }); });
@@ -550,7 +587,7 @@
     $('btnLang').textContent = lang === 'pl' ? 'EN' : 'PL';
     $('tJoin').textContent = t('join'); $('tJoinSub').textContent = t('joinSub');
     $('tPlayers').textContent = t('playersH'); $('tAnswers').textContent = t('answers');
-    $('tHint').innerHTML = t('hint'); $('btnRestoreQ').textContent = lang === 'pl' ? 'PRZYWRÓĆ Z CONFIG' : 'RESTORE FROM CONFIG'; $('tKbd').textContent = t('kbd');
+    updateQCount(); $('tKbd').textContent = t('kbd');
     $('tBoard').textContent = t('boardT'); $('tFinal').textContent = t('finalT');
     renderPlayers(); updateControls();
     if (state === 'board') renderBoard();
@@ -580,24 +617,43 @@
 
   /* ---------- PEERJS ---------- */
   let hostId = store.get(LS.hostId);
-  if (!hostId){ hostId = 'eventquiz-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); store.set(LS.hostId, hostId); }
+  if (!hostId) hostId = newHostId();
   let peer, retry = 0;
+  function newHostId(){ const id = 'eventquiz-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); store.set(LS.hostId, id); return id; }
+  let restartT = null;
+  function restartPeer(delay){
+    clearTimeout(restartT);
+    restartT = setTimeout(() => { try{ peer && peer.destroy(); }catch(e){} startPeer(); }, delay);
+  }
   function startPeer(){
-    peer = new Peer(hostId);
+    if (!$('qr').children.length) $('qr').innerHTML = '<div class="qr-wait">' + t('connectingSrv') + '</div>';
+    peer = new Peer(hostId, { debug:0, config:{ iceServers:[{ urls:'stun:stun.l.google.com:19302' }, { urls:'stun:global.stun.twilio.com:3478' }] } });
     peer.on('open', id => {
       retry = 0;
       const dir = location.pathname.endsWith('/') ? location.pathname : location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
       const url = new URL(dir + 'play.html', location.origin); url.searchParams.set('code', id);
       $('qr').innerHTML = '';
       new QRCode($('qr'), { text:url.toString(), width:512, height:512, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
-      $('joinUrl').textContent = url.toString();
+      $('joinUrl').textContent = '';
     });
     peer.on('error', err => {
-      if (err.type === 'unavailable-id' && retry < 10){ retry++; peer.destroy(); setTimeout(startPeer, 2500); return; }
-      if (err.type === 'peer-unavailable') return;
-      $('joinUrl').textContent = t('peerErr') + err.type;
+      if (err.type === 'peer-unavailable') return;              // telefon, który już zniknął — nic się nie dzieje
+      if (err.type === 'unavailable-id'){
+        // ten sam kod jest jeszcze zajęty (np. stara karta z quizem) — po kilku próbach bierzemy nowy kod
+        retry++;
+        if (retry > 6){ hostId = newHostId(); retry = 0; }
+        restartPeer(2500); return;
+      }
+      // problemy z siecią / serwerem połączeń — ponawiamy automatycznie
+      retry++;
+      $('joinUrl').textContent = t('reconnecting') + ' (' + retry + ')';
+      restartPeer(Math.min(2000 * retry, 10000));
     });
-    peer.on('disconnected', () => { try{ peer.reconnect(); }catch(e){} });
+    peer.on('disconnected', () => {
+      if (peer.destroyed) return;
+      $('joinUrl').textContent = t('reconnecting');
+      setTimeout(() => { try{ if (!peer.destroyed && peer.disconnected) peer.reconnect(); }catch(e){ restartPeer(2000); } }, 1000);
+    });
     peer.on('connection', conn => {
       let pid = null;
       conn.on('data', data => {

@@ -55,6 +55,13 @@
   .opt{ border:none; border-radius:16px; color:#fff; font:700 16px var(--font-body); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px 10px; cursor:pointer; text-align:center; min-height:90px; transition:transform .1s, opacity .2s; overflow-wrap:anywhere; }
   .opt:active{ transform:scale(.96); }
   .opt .L{ width:38px; height:38px; border-radius:10px; background:rgba(255,255,255,.22); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+  .q-img{ display:block; max-width:100%; max-height:24vh; object-fit:contain; border-radius:12px; margin:0 auto 12px; }
+  .q-img[hidden]{ display:none; }
+  .opt .oimg{ width:100%; max-height:14vh; flex:1 1 auto; min-height:0; object-fit:contain; border-radius:10px; }
+  .opt.has-img{ padding:8px; gap:6px; }
+  .opt.has-img .L{ width:30px; height:30px; font-size:15px; }
+  .correct-was{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .cw-img{ max-width:160px; max-height:110px; object-fit:contain; border-radius:8px; }
   .opt0{ background:var(--a0); } .opt1{ background:var(--a1); } .opt2{ background:var(--a2); } .opt3{ background:var(--a3); }
   .opt4{ background:#7A8A99; } .opt5{ background:#56606B; }
   .opts.locked .opt{ opacity:.25; pointer-events:none; }
@@ -66,6 +73,7 @@
   .stat .v{ font-weight:800; font-size:22px; }
   .stat .k{ color:var(--muted); font-size:12px; margin-top:2px; }
   .correct-was{ background:var(--surface); border-radius:12px; padding:10px 14px; font-size:14px; max-width:340px; }
+  .correct-was[hidden]{ display:none; }
   .correct-was b{ color:var(--correct); }
   .lang{ background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:5px 8px; font:600 12px var(--font-body); }
 </style>
@@ -104,6 +112,7 @@
     <div class="q-meta"><span id="qProg"></span><span id="qSec"></span></div>
     <div class="bar"><i id="qBar"></i></div>
     <div class="q-text" id="qText"></div>
+    <img id="qImg" class="q-img" alt="" hidden>
     <div class="opts" id="qOpts"></div>
   </section>
 
@@ -202,6 +211,7 @@
     current = { qid:d.qid, options:d.options, recvAt:performance.now(), remainingMs:d.remainingMs, limitMs:d.limitMs };
     $('qProg').textContent = t('question') + ' ' + (d.qIndex + 1) + ' / ' + d.qTotal;
     $('qText').textContent = d.prompt;
+    if (d.image){ $('qImg').src = d.image; $('qImg').hidden = false; } else { $('qImg').hidden = true; $('qImg').removeAttribute('src'); }
     const box = $('qOpts');
     box.className = 'opts' + (d.options.length === 2 ? ' n2' : '');
     box.innerHTML = '';
@@ -209,7 +219,9 @@
       const b = document.createElement('button');
       b.className = 'opt opt' + i;
       b.innerHTML = '<span class="L">' + LETTERS[i] + '</span>';
-      const s = document.createElement('span'); s.textContent = o; b.appendChild(s);
+      const img = d.optionImages && d.optionImages[i];
+      if (img){ const im = document.createElement('img'); im.className = 'oimg'; im.src = img; im.alt = ''; b.appendChild(im); b.classList.add('has-img'); }
+      if (o){ const s = document.createElement('span'); s.textContent = o; b.appendChild(s); }
       b.addEventListener('click', () => answer(i, b));
       box.appendChild(b);
     });
@@ -245,9 +257,12 @@
     $('rTime').textContent = d.ms != null ? fmt(d.ms) : '–';
     $('rRank').textContent = d.rank > 0 ? d.rank + '/' + d.of : '–';
     $('rScore').textContent = d.score;
-    const opt = lastQuestion && lastQuestion.qid === d.qid ? lastQuestion.options[d.correctIndex] : null;
+    const same = lastQuestion && lastQuestion.qid === d.qid;
+    const opt = same ? (lastQuestion.options[d.correctIndex] || (lastQuestion.optionImages && lastQuestion.optionImages[d.correctIndex] ? '🖼' : '')) : null;
     $('rCorrect').hidden = d.correct || !opt;
-    if (opt){ $('rCorrect').innerHTML = ''; $('rCorrect').append(t('correctWas')); const b = document.createElement('b'); b.textContent = LETTERS[d.correctIndex] + '. ' + opt; $('rCorrect').append(b); }
+    if (opt){ $('rCorrect').innerHTML = ''; $('rCorrect').append(t('correctWas')); const b = document.createElement('b'); b.textContent = LETTERS[d.correctIndex] + '. ' + opt; $('rCorrect').append(b);
+      const ci = lastQuestion.optionImages && lastQuestion.optionImages[d.correctIndex];
+      if (ci){ const im = document.createElement('img'); im.src = ci; im.alt = ''; im.className = 'cw-img'; $('rCorrect').append(im); } }
     setScore(d.score);
     if (navigator.vibrate) navigator.vibrate(d.correct ? [40, 60, 40] : 120);
     show('vResult');
@@ -285,7 +300,11 @@
     if (!peer || peer.destroyed){
       peer = new Peer();
       peer.on('open', openConn);
-      peer.on('error', err => { if (err.type === 'peer-unavailable' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') scheduleRetry(); else { setStatus('reconnecting', 'err'); scheduleRetry(); } });
+      peer.on('error', err => {
+        // ekran chwilowo niedostępny → po prostu ponów; problem z serwerem/siecią → zbuduj połączenie od nowa
+        if (err.type !== 'peer-unavailable'){ try{ peer.destroy(); }catch(e){} }
+        setStatus('reconnecting', 'err'); scheduleRetry();
+      });
       peer.on('disconnected', () => { try{ peer.reconnect(); }catch(e){} });
     } else if (peer.open) openConn();
   }
