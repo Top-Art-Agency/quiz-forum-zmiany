@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test obciążenia</title>
+<script src="config.js?v=6"></script>
+<script src="brand.js?v=6"></script>
+<style>
+  :root{ --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531; --correct:#22C55E; --wrong:#EF4444;
+    --font-heading:system-ui, sans-serif; --font-body:system-ui, sans-serif; --heading-style:normal; --line:color-mix(in srgb, var(--text) 14%, transparent); }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--text); font-family:var(--font-body); padding:24px; }
+  .wrap{ max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+  h1{ font-family:var(--font-heading); font-style:var(--heading-style); font-weight:800; font-size:30px; text-transform:uppercase; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .note{ color:var(--muted); font-size:13px; line-height:1.6; }
+  .note b{ color:var(--text); }
+  .note a{ color:var(--accent); }
+  .row{ display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
+  label{ display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); }
+  input{ font:600 15px var(--font-body); background:#0007; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:9px 10px; width:220px; }
+  input[type=number]{ width:110px; }
+  .btn{ font:700 14px var(--font-body); border:none; border-radius:10px; padding:11px 18px; cursor:pointer; background:var(--primary); color:#fff; }
+  .btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--text); }
+  .btn:disabled{ opacity:.4; cursor:default; }
+  .kpis{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .kpi{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .kpi .v{ font-size:26px; font-weight:800; }
+  .kpi .k{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .ok{ color:var(--correct); } .warn{ color:var(--accent); } .bad{ color:var(--wrong); }
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  th, td{ text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child, td:first-child{ text-align:left; }
+  th{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  #log{ font:12px/1.5 ui-monospace, Menlo, monospace; color:var(--muted); max-height:180px; overflow:auto; white-space:pre-wrap; }
+  .verdict{ font-size:16px; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Test obciążenia quizu</h1>
+  <div class="card note">
+    Ta strona udaje wielu graczy naraz. Każdy bot ma <b>własne połączenie z serwerem</b>, dołącza do gry i odpowiada losowo w losowym czasie.
+    Test działa w <b>osobnym pokoju</b>, więc nie zaśmieca właściwej gry.<br><br>
+    <b>1.</b> Otwórz ekran quizu w pokoju testowym: <a id="hostLink" target="_blank"></a><br>
+    <b>2.</b> Tutaj wybierz liczbę botów i kliknij <b>START</b>. Boty pojawią się na liście graczy na ekranie.<br>
+    <b>3.</b> Na ekranie prowadź quiz normalnie (możesz też dołączyć prawdziwym telefonem — kod QR na ekranie testowym).<br>
+    <b>4.</b> Obserwuj tabelę niżej. Trzymaj tę kartę <b>na wierzchu</b> (w osobnym oknie) — przeglądarka spowalnia karty w tle.<br>
+    <span class="warn">Darmowy plan Firebase (Spark) = max 100 połączeń naraz, łącznie z ekranem, tą stroną i telefonami. Przy większej liczbie część botów zostanie odrzucona — to też jest wynik testu.</span>
+  </div>
+
+  <div class="card row">
+    <label>Pokój testowy<input id="inRoom" value="test-obciazenia"></label>
+    <label>Liczba botów<input id="inN" type="number" min="1" max="500" value="50"></label>
+    <label>Odpowiedź po (s)<input id="inDelay" value="1-8"></label>
+    <button class="btn" id="btnStart">START</button>
+    <button class="btn ghost" id="btnStop" disabled>ZATRZYMAJ I ROZŁĄCZ</button>
+    <button class="btn ghost" id="btnClean">WYCZYŚĆ POKÓJ TESTOWY</button>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="kConn">0</div><div class="k">botów połączonych</div></div>
+    <div class="kpi"><div class="v" id="kFail">0</div><div class="k">nieudanych / rozłączonych</div></div>
+    <div class="kpi"><div class="v" id="kAns">0</div><div class="k">wysłanych odpowiedzi</div></div>
+    <div class="kpi"><div class="v" id="kQ">–</div><div class="k">opóźnienie pytania (mediana / max)</div></div>
+    <div class="kpi"><div class="v" id="kR">–</div><div class="k">opóźnienie wyniku (mediana / max)</div></div>
+  </div>
+
+  <div class="card">
+    <div class="verdict" id="verdict">Kliknij START.</div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Pytanie</th><th>Dostało pytanie</th><th>Opóźnienie pytania med / p95 / max</th><th>Odpowiedzi wysłane</th><th>Dostało wynik</th><th>Opóźnienie wyniku med / max</th></tr></thead>
+      <tbody id="tbody"><tr><td colspan="6" class="note">Brak danych — rozpocznij quiz na ekranie testowym.</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card"><div id="log"></div></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+(() => {
+  const CFG = window.QUIZ_CONFIG || {};
+  const $ = id => document.getElementById(id);
+  const roomName = () => $('inRoom').value.replace(/[^\w-]/g, '') || 'test-obciazenia';
+  function setHostLink(){
+    const dir = location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
+    const u = new URL(dir + 'index.html', location.origin); u.searchParams.set('room', roomName());
+    $('hostLink').href = u.toString(); $('hostLink').textContent = u.toString();
+  }
+  $('inRoom').addEventListener('input', setHostLink); setHostLink();
+  const log = m => { const el = $('log'); el.textContent = new Date().toLocaleTimeString() + '  ' + m + '\n' + el.textContent; };
+
+  let bots = [], running = false;
+  const qs = {};   // qid -> { delivered:[ms], answers:0, results:[ms] }
+  const Q = qid => (qs[qid] = qs[qid] || { delivered:[], answers:0, results:[] });
+  let totalAnswers = 0, fails = 0;
+
+  function parseDelay(){ const m = $('inDelay').value.match(/(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)/); const a = m ? parseFloat(m[1].replace(',', '.')) : 1, b = m ? parseFloat(m[2].replace(',', '.')) : 8; return [Math.min(a, b) * 1000, Math.max(a, b) * 1000]; }
+
+  function makeBot(i, ROOM){
+    const name = 'Bot ' + String(i + 1).padStart(3, '0');
+    const pid = 'bot-' + (i + 1) + '-' + Math.random().toString(36).slice(2, 7);
+    const app = firebase.initializeApp(CFG.firebase, 'bot' + i + '-' + Date.now());
+    const db = app.database();
+    const room = db.ref('quiz/' + ROOM);
+    const bot = { i, name, pid, app, db, connected:false, offset:0, lastQ:null, lastR:null, timers:[] };
+    const now = () => Date.now() + bot.offset;
+    db.ref('.info/serverTimeOffset').on('value', s => { bot.offset = s.val() || 0; });
+    db.ref('.info/connected').on('value', s => {
+      const c = !!s.val();
+      if (c && !bot.connected){
+        const me = room.child('players/' + pid);
+        me.onDisconnect().update({ online:false });
+        me.update({ name, online:true, bot:true }).catch(e => { fails++; log(name + ': odmowa zapisu (' + (e.code || e.message) + ')'); });
+      }
+      if (!c && bot.connected) fails++;
+      bot.connected = c; render();
+    });
+    let st = null;
+    room.child('state').on('value', s => {
+      st = s.val(); if (!st) return;
+      if (st.phase === 'question' && st.qid !== bot.lastQ){
+        bot.lastQ = st.qid;
+        const sentAt = (st.startAt || now()) - 400;           // ekran zapisuje pytanie ok. 400 ms przed startem zegara
+        Q(st.qid).delivered.push(Math.max(0, now() - sentAt));
+        const [dMin, dMax] = parseDelay();
+        const left = Math.max(0, st.startAt + st.limitMs - now() - 800);
+        const wait = Math.max(0, st.startAt - now()) + Math.min(left, dMin + Math.random() * (dMax - dMin));
+        const nOpt = Array.isArray(st.options) ? st.options.length : Object.keys(st.options || {}).length || 2;
+        const qid = st.qid;
+        bot.timers.push(setTimeout(() => {
+          if (!running) return;
+          room.child('answers/' + qid + '/' + pid).set({ index:Math.floor(Math.random() * nOpt), elapsedMs:Math.max(0, Math.round(now() - st.startAt)), at:firebase.database.ServerValue.TIMESTAMP })
+            .then(() => { Q(qid).answers++; totalAnswers++; render(); })
+            .catch(e => { fails++; log(name + ': odpowiedź odrzucona (' + (e.code || e.message) + ')'); });
+        }, wait));
+        render();
+      }
+    });
+    room.child('results/' + pid).on('value', s => {
+      const r = s.val();
+      if (r && r.type === 'result' && r.qid !== bot.lastR && st && st.at){
+        bot.lastR = r.qid; Q(r.qid).results.push(Math.max(0, now() - st.at)); render();
+      }
+    });
+    return bot;
+  }
+
+  const pct = (arr, p) => { if (!arr.length) return null; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * (a.length - 1) + 0.5))]; };
+  const f = ms => ms == null ? '–' : (ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s');
+  const cls = ms => ms == null ? '' : ms < 700 ? 'ok' : ms < 2000 ? 'warn' : 'bad';
+  let rT = null;
+  function render(){ if (rT) return; rT = setTimeout(() => { rT = null; draw(); }, 200); }
+  function draw(){
+    const conn = bots.filter(b => b.connected).length, N = bots.length;
+    $('kConn').textContent = conn + ' / ' + N; $('kConn').className = 'v ' + (N && conn === N ? 'ok' : conn ? 'warn' : '');
+    $('kFail').textContent = fails; $('kFail').className = 'v ' + (fails ? 'bad' : 'ok');
+    $('kAns').textContent = totalAnswers;
+    const allD = [].concat(...Object.values(qs).map(q => q.delivered)), allR = [].concat(...Object.values(qs).map(q => q.results));
+    $('kQ').innerHTML = allD.length ? '<span class="' + cls(pct(allD, .5)) + '">' + f(pct(allD, .5)) + '</span> / <span class="' + cls(Math.max(...allD)) + '">' + f(Math.max(...allD)) + '</span>' : '–';
+    $('kR').innerHTML = allR.length ? '<span class="' + cls(pct(allR, .5)) + '">' + f(pct(allR, .5)) + '</span> / <span class="' + cls(Math.max(...allR)) + '">' + f(Math.max(...allR)) + '</span>' : '–';
+    const ids = Object.keys(qs).map(Number).sort((a, b) => a - b);
+    if (ids.length) $('tbody').innerHTML = ids.map(id => { const q = qs[id], d = q.delivered, r = q.results;
+      return '<tr><td>' + (id + 1) + '</td><td class="' + (d.length >= conn ? 'ok' : 'warn') + '">' + d.length + ' / ' + N + '</td>' +
+        '<td><span class="' + cls(pct(d, .5)) + '">' + f(pct(d, .5)) + '</span> / <span class="' + cls(pct(d, .95)) + '">' + f(pct(d, .95)) + '</span> / <span class="' + cls(d.length ? Math.max(...d) : null) + '">' + f(d.length ? Math.max(...d) : null) + '</span></td>' +
+        '<td>' + q.answers + '</td><td class="' + (r.length >= q.answers ? 'ok' : 'warn') + '">' + r.length + '</td>' +
+        '<td><span class="' + cls(pct(r, .5)) + '">' + f(pct(r, .5)) + '</span> / <span class="' + cls(r.length ? Math.max(...r) : null) + '">' + f(r.length ? Math.max(...r) : null) + '</span></td></tr>'; }).join('');
+    // werdykt
+    let v = 'Kliknij START.', c = '';
+    if (N){
+      const p95 = pct(allD, .95), rMax = allR.length ? Math.max(...allR) : null;
+      if (conn < N && N - conn > fails) { v = 'Łączenie botów… ' + conn + ' / ' + N; }
+      else if (!allD.length) { v = 'Boty połączone (' + conn + ' / ' + N + '). Rozpocznij quiz na ekranie testowym.'; c = conn === N ? 'ok' : 'warn'; }
+      else if (conn < N || fails) { v = '⚠ Część botów nie połączyła się lub wypadła (' + (N - conn) + '). Przy ' + N + ' urządzeniach najpewniej trafiacie w limit planu Firebase (100 połączeń) — rozważ plan Blaze.'; c = 'bad'; }
+      else if (p95 != null && p95 < 1000 && (rMax == null || rMax < 2000)) { v = '✅ ' + N + ' graczy: pytania docierają średnio po ' + f(pct(allD, .5)) + ' (95% w ' + f(p95) + '). Wydajność OK.'; c = 'ok'; }
+      else { v = '⚠ Opóźnienia rosną (95% pytań w ' + f(p95) + '). Sprawdź internet albo zmniejsz liczbę zdjęć wgranych w edytorze.'; c = 'warn'; }
+    }
+    $('verdict').textContent = v; $('verdict').className = 'verdict ' + c;
+  }
+
+  $('btnStart').addEventListener('click', async () => {
+    if (typeof firebase === 'undefined' || !CFG.firebase){ alert('Brak Firebase / config.js — odśwież stronę.'); return; }
+    const N = Math.max(1, Math.min(500, parseInt($('inN').value, 10) || 1));
+    if (N > 95 && !confirm('Darmowy plan Firebase pozwala na 100 połączeń naraz. ' + N + ' botów + ekran + ta strona może przekroczyć limit. Kontynuować?')) return;
+    running = true; $('btnStart').disabled = true; $('btnStop').disabled = false; $('inRoom').disabled = true;
+    const ROOM = roomName();
+    log('Start: ' + N + ' botów w pokoju „' + ROOM + '”');
+    for (let i = 0; i < N && running; i++){
+      try{ bots.push(makeBot(i, ROOM)); }catch(e){ fails++; log('Bot ' + (i + 1) + ': ' + e.message); }
+      render();
+      await new Promise(r => setTimeout(r, 60));    // łagodny start, żeby nie zalać serwera naraz
+    }
+  });
+  async function stopAll(){
+    running = false;
+    log('Rozłączanie ' + bots.length + ' botów…');
+    for (const b of bots){
+      b.timers.forEach(clearTimeout);
+      try{ await b.db.ref('quiz/' + roomName() + '/players/' + b.pid).update({ online:false }); }catch(e){}
+      try{ b.db.goOffline(); await b.app.delete(); }catch(e){}
+    }
+    bots = []; render();
+    $('btnStart').disabled = false; $('btnStop').disabled = true; $('inRoom').disabled = false;
+    log('Rozłączono.');
+  }
+  $('btnStop').addEventListener('click', stopAll);
+  $('btnClean').addEventListener('click', async () => {
+    if (running){ alert('Najpierw zatrzymaj boty.'); return; }
+    const ROOM = roomName();
+    if (ROOM === (CFG.roomId || '') && !confirm('To jest WŁAŚCIWY pokój eventu! Na pewno wyczyścić?')) return;
+    if (!confirm('Usunąć wszystkie dane pokoju „' + ROOM + '”?')) return;
+    try{
+      const app = firebase.apps.find(a => a.name === '[DEFAULT]') || firebase.initializeApp(CFG.firebase);
+      await app.database().ref('quiz/' + ROOM).remove();
+      Object.keys(qs).forEach(k => delete qs[k]); totalAnswers = 0; fails = 0; draw();
+      log('Wyczyszczono pokój „' + ROOM + '”. Odśwież ekran testowy.');
+    }catch(e){ log('Błąd czyszczenia: ' + (e.code || e.message)); }
+  });
+  window.addEventListener('pagehide', () => { bots.forEach(b => { try{ b.db.ref('quiz/' + roomName() + '/players/' + b.pid).update({ online:false }); }catch(e){} }); });
+  draw();
+})();
+</script>
+</body>
+</html>
