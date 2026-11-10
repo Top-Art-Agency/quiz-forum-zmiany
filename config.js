@@ -32,12 +32,12 @@ window.QUIZ_CONFIG = {
   nameLabel: { pl: 'Imię albo nazwa stolika', en: 'Your name or table name' },
 
   /* ---------- SERWER (Firebase Realtime Database) ---------- */
-  // Projekt „gryeventowe” — ten sam, którego używa ranking-gier.
+  // Baza: projekt gryeventowe-632b8 (Realtime Database, Belgia).
   // Dane quizu trafiają do osobnej gałęzi: quiz/<roomId>.
   firebase: {
     apiKey: "AIzaSyAZEL93JgA5LfmiAWLJFAaLN2F7q-e5QgY",
     authDomain: "gryeventowe.firebaseapp.com",
-    databaseURL: "https://gryeventowe-default-rtdb.europe-west1.firebasedatabase.app",
+    databaseURL: "https://gryeventowe-632b8-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "gryeventowe",
     storageBucket: "gryeventowe.firebasestorage.app",
     messagingSenderId: "15592080978",
