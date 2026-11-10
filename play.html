@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0E1020">
 <title>Gracz</title>
-<script src="config.js"></script>
-<script src="brand.js"></script>
+<script src="config.js?v=4"></script>
+<script src="brand.js?v=4"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -357,7 +357,7 @@
   }
 
   renderTexts();
-  if (!ROOM || typeof firebase === 'undefined'){ setStatus('noCode', 'err'); show('vName'); $('btnJoin').disabled = true; }
+  if (!ROOM || typeof firebase === 'undefined' || !CFG.firebase){ setStatus('noCode', 'err'); show('vName'); $('btnJoin').disabled = true; }
   else {
     setStatus('connecting');
     if (myName){ joined = true; showWait(false); } else show('vName');

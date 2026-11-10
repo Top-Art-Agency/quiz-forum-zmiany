@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ekran quizu</title>
-<script src="config.js"></script>
-<script src="brand.js"></script>
+<script src="config.js?v=4"></script>
+<script src="brand.js?v=4"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -246,7 +246,7 @@
       hint:'<b>Format:</b> pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką *. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Pytania zapisują się automatycznie w tej przeglądarce.',
       noQ:'Nie rozpoznano żadnego pytania — sprawdź format.', confirmNew:'Wyzerować wyniki i zacząć nową grę?',
       restored:n=>'Przywrócono wyniki poprzedniej sesji ('+n+' graczy). „NOWA GRA” zaczyna od zera.',
-      reconnecting:'Łączenie z serwerem gry…', fbErr:'Błąd serwera: ', permErr:'Serwer odmówił zapisu — ustaw reguły bazy Firebase (README).' },
+      reconnecting:'Łączenie z serwerem gry…', fbErr:'Błąd serwera: ', permErr:'Serwer odmówił zapisu — ustaw reguły bazy Firebase (README).', oldCfg:'Przeglądarka ma starą wersję config.js — odśwież stronę (Cmd+Shift+R) albo poczekaj kilka minut.' },
     en:{ players:'players', join:'Join the game!', joinSub:'Scan the code with your phone, enter your name and wait for the first question.',
       playersH:'Players', noPlayers:'Waiting for the first players…', question:'QUESTION', answers:'answers', pts:'pts',
       start:'START QUIZ', resume:'CONTINUE FROM QUESTION ', reveal:'REVEAL ANSWER', board:'LEADERBOARD', next:'NEXT QUESTION',
@@ -256,7 +256,7 @@
       hint:'<b>Format:</b> question on the first line, answers below (one per line), mark the correct one with *. A blank line separates questions. Optional <b>[30s]</b> at the end of a question = custom time limit. Questions are saved automatically in this browser.',
       noQ:'No question recognised — check the format.', confirmNew:'Reset scores and start a new game?',
       restored:n=>'Restored scores from the previous session ('+n+' players). "NEW GAME" starts from scratch.',
-      reconnecting:'Connecting to the game server…', fbErr:'Server error: ', permErr:'Server refused to save — set Firebase database rules (README).' }
+      reconnecting:'Connecting to the game server…', fbErr:'Server error: ', permErr:'Server refused to save — set Firebase database rules (README).', oldCfg:'Your browser has an old config.js — hard-refresh the page or wait a few minutes.' }
   };
   let lang = CFG.defaultLang === 'en' ? 'en' : 'pl';
   const t = k => STR[lang][k];
@@ -673,6 +673,7 @@
   show('vLobby');
   showQr();               // kod QR jest stały dla eventu — można go też wydrukować na stoliki
   if (typeof firebase === 'undefined'){ showConn('err', t('fbErr') + 'SDK'); }
+  else if (!CFG.firebase || !CFG.firebase.databaseURL){ showConn('err', t('oldCfg')); }
   else if (initServer()){
     showConn('wait');
     loadScores().then(() => { listenPlayers(); showLobby(); });
