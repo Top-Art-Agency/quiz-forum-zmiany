@@ -220,6 +220,8 @@
   <button class="btn ghost" id="btnBoard" hidden>RANKING</button>
   <button class="btn ghost" id="btnEditor">EDYTUJ PYTANIA</button>
   <button class="btn ghost" id="btnCsv" hidden>EKSPORT CSV</button>
+  <button class="btn ghost" id="btnFinishNow" hidden>ZAKOŃCZ I POKAŻ ZWYCIĘZCÓW</button>
+  <button class="btn ghost" id="btnAbort" hidden>PRZERWIJ</button>
   <button class="btn ghost" id="btnNew">NOWA GRA</button>
   <span class="kbd" id="tKbd">spacja / → = dalej</span>
 </div>
@@ -246,6 +248,10 @@
       hint:'<b>Format:</b> pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką *. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Pytania zapisują się automatycznie w tej przeglądarce.',
       noQ:'Nie rozpoznano żadnego pytania — sprawdź format.', confirmNew:'Wyzerować wyniki i zacząć nową grę?',
       restored:n=>'Przywrócono wyniki poprzedniej sesji ('+n+' graczy). „NOWA GRA” zaczyna od zera.',
+      abort:'PRZERWIJ', finishNow:'ZAKOŃCZ I POKAŻ ZWYCIĘZCÓW',
+      confirmAbort:'Przerwać quiz i wrócić do lobby?\n\nWyniki zostaną zachowane — potem możesz kontynuować, pokazać zwycięzców albo kliknąć NOWA GRA, żeby zacząć od zera.',
+      confirmFinish:'Zakończyć quiz teraz i pokazać podium z dotychczasowymi wynikami?',
+      aborted:'Quiz przerwany. KONTYNUUJ = dalej od tego miejsca · NOWA GRA = od początku z wyzerowanymi wynikami.',
       reconnecting:'Łączenie z serwerem gry…', fbErr:'Błąd serwera: ', permErr:'Serwer odmówił zapisu — ustaw reguły bazy Firebase (README).', oldCfg:'Przeglądarka ma starą wersję config.js — odśwież stronę (Cmd+Shift+R) albo poczekaj kilka minut.' },
     en:{ players:'players', join:'Join the game!', joinSub:'Scan the code with your phone, enter your name and wait for the first question.',
       playersH:'Players', noPlayers:'Waiting for the first players…', question:'QUESTION', answers:'answers', pts:'pts',
@@ -256,6 +262,10 @@
       hint:'<b>Format:</b> question on the first line, answers below (one per line), mark the correct one with *. A blank line separates questions. Optional <b>[30s]</b> at the end of a question = custom time limit. Questions are saved automatically in this browser.',
       noQ:'No question recognised — check the format.', confirmNew:'Reset scores and start a new game?',
       restored:n=>'Restored scores from the previous session ('+n+' players). "NEW GAME" starts from scratch.',
+      abort:'STOP', finishNow:'END & SHOW WINNERS',
+      confirmAbort:'Stop the quiz and go back to the lobby?\n\nScores are kept — you can then continue, show the winners or click NEW GAME to start over.',
+      confirmFinish:'End the quiz now and show the podium with the current scores?',
+      aborted:'Quiz stopped. CONTINUE = carry on from here · NEW GAME = start over with scores reset.',
       reconnecting:'Connecting to the game server…', fbErr:'Server error: ', permErr:'Server refused to save — set Firebase database rules (README).', oldCfg:'Your browser has an old config.js — hard-refresh the page or wait a few minutes.' }
   };
   let lang = CFG.defaultLang === 'en' ? 'en' : 'pl';
@@ -342,7 +352,8 @@
      quiz/<roomId>/results/<pid>    — wynik rundy / finał dla gracza (zapisuje ekran)
      quiz/<roomId>/scores/<pid>     — punkty (zapisuje ekran; po odświeżeniu ekranu wyniki wracają)
   */
-  const ROOM = String(CFG.roomId || 'quiz').replace(/[^\w-]/g, '');
+  // ?room=nazwa w adresie = osobny pokój (np. do testów), bez ruszania właściwej gry
+  const ROOM = String(new URLSearchParams(location.search).get('room') || CFG.roomId || 'quiz').replace(/[^\w-]/g, '');
   let db = null, room = null, serverOffset = 0, connected = false;
   const serverNow = () => Date.now() + serverOffset;
   function initServer(){
@@ -587,6 +598,10 @@
     $('btnCsv').textContent = t('csv');
     $('btnNew').textContent = t('newGame');
     $('btnNew').hidden = !(state === 'lobby' || state === 'final');
+    $('btnAbort').hidden = !(state === 'question' || state === 'reveal' || state === 'board');
+    $('btnAbort').textContent = t('abort');
+    $('btnFinishNow').hidden = !(state === 'board' || (state === 'lobby' && ranked().some(p => p.score > 0)));
+    $('btnFinishNow').textContent = t('finishNow');
   }
   function mainAction(){
     if (state === 'lobby'){
@@ -613,6 +628,21 @@
     players.forEach((p, pid) => { if (!p.online){ players.delete(pid); u['players/' + pid] = null; } else Object.assign(p, { score:0, timeMs:0, correct:0, lastGain:0 }); });
     qIndex = 0; write(u); $('restoreNote').textContent = ''; showLobby();
   });
+  // Przerwanie w dowolnym momencie: wraca do lobby, wyniki zostają (można kontynuować albo zacząć NOWĄ GRĘ)
+  function abortQuiz(){
+    if (!(state === 'question' || state === 'reveal' || state === 'board')) return;
+    if (!confirm(t('confirmAbort'))) return;
+    if (state === 'question' && round) qIndex = round.qi;   // przerwane pytanie da się zadać jeszcze raz
+    write({ 'session/qIndex': qIndex });
+    showLobby();
+    $('restoreNote').textContent = t('aborted');
+  }
+  $('btnAbort').addEventListener('click', abortQuiz);
+  $('btnFinishNow').addEventListener('click', () => {
+    if (!confirm(t('confirmFinish'))) return;
+    if (!questions.length) questions = parseQuestions(getQText());
+    showFinal();
+  });
   $('btnCsv').addEventListener('click', () => {
     const rows = [['Miejsce','Gracz','Punkty','Poprawne','Czas poprawnych (s)']].concat(
       ranked().map((p, i) => [i + 1, p.name, p.score, p.correct, (p.timeMs / 1000).toFixed(2)]));
@@ -624,6 +654,7 @@
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
     if (e.code === 'Space' || e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'Enter'){ e.preventDefault(); mainAction(); }
+    else if (e.key === 'Escape' && !document.fullscreenElement) abortQuiz();
   });
   $('btnFull').addEventListener('click', () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});

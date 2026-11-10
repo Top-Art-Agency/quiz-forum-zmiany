@@ -42,6 +42,10 @@ Wszystkie liczby zmienisz w `config.js` → `scoring`.
    Runda kończy się sama, gdy minie czas albo wszyscy odpowiedzą.
 4. Po rundzie ekran pokazuje poprawną odpowiedź, rozkład głosów i 3 najszybszych; telefon pokazuje graczowi jego punkty, czas i miejsce.
 5. **EKSPORT CSV** zapisuje pełne wyniki (otwiera się w Excelu).
+6. **PRZERWIJ** (albo klawisz Esc poza pełnym ekranem) w każdej chwili wraca do lobby, a wyniki zostają. Potem możesz:
+   - **KONTYNUUJ OD PYTANIA N**: przerwane pytanie zostanie zadane jeszcze raz,
+   - **ZAKOŃCZ I POKAŻ ZWYCIĘZCÓW**: od razu podium z dotychczasowymi wynikami,
+   - **NOWA GRA**: od początku, z wyzerowanymi wynikami.
 
 ### Odporność na problemy
 
@@ -81,6 +85,13 @@ Odpowiedź tekstowa
 *Odpowiedź ze zdjęciem [img] odp-b.jpg
 [img] odp-c.jpg
 ```
+
+## Test obciążenia
+
+`test.html` udaje wielu graczy (boty z osobnymi połączeniami) w **osobnym pokoju** `test-obciazenia`:
+1. Otwórz `…/test.html`, kliknij link do ekranu testowego (`index.html?room=test-obciazenia`).
+2. Ustaw liczbę botów → **START**, potem prowadź quiz na ekranie testowym.
+3. Tabela pokazuje, ile botów dostało pytanie i wynik oraz z jakim opóźnieniem. Na koniec **ZATRZYMAJ** i **WYCZYŚĆ POKÓJ TESTOWY**.
 
 ## Serwer — Firebase Realtime Database
 
