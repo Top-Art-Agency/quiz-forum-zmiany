@@ -11,14 +11,14 @@ Działa jako statyczna strona na GitHub Pages — bez serwera i bez bazy danych.
 | `play.html` | **Strona gracza** (telefon, otwiera się z kodu QR) |
 | `config.js` | **Jedyny plik do edycji**: nazwa, kolory, logo, punktacja, pytania |
 | `brand.js` | Nakłada branding z `config.js` (nie ruszać) |
-| `assets/logo.svg` | Logo (strzałki z KV) |
-| `assets/kv.jpg` | KV wyświetlany w lobby |
-| `assets/fonts.css`, `assets/fonts/` | Fonty (Barlow Condensed + Poppins) hostowane lokalnie |
+| `edytor.html` | **Edytor pytań** (otwiera się przyciskiem EDYTUJ PYTANIA) |
+| `logo.svg`, `kv.jpg` | Logo (strzałki z KV) i KV wyświetlany w lobby |
+| `fonts.css`, `*.woff2` | Fonty (Barlow Condensed + Poppins) hostowane lokalnie |
 
 ## Publikacja na GitHub Pages
 
 1. Na koncie `top-art-agency` załóż nowe **publiczne** repozytorium, np. `quiz-forum-zmiany`.
-2. **Add file → Upload files** → przeciągnij **całą zawartość** tego folderu (razem z folderem `assets`).
+2. **Add file → Upload files** → przeciągnij **wszystkie pliki** z tego folderu (leżą razem w głównym katalogu).
 3. **Settings → Pages** → Source: *Deploy from a branch*, Branch: `main`, folder `/ (root)` → Save.
 4. Po 1–2 minutach ekran quizu będzie pod adresem:
    `https://top-art-agency.github.io/quiz-forum-zmiany/`
@@ -45,13 +45,22 @@ Wszystkie liczby zmienisz w `config.js` → `scoring`.
 
 ### Odporność na problemy
 
-- **Telefon się odświeży / zablokuje** — gracz wraca automatycznie z tymi samymi punktami.
-- **Ekran się odświeży** — kod QR zostaje ten sam, telefony same łączą się ponownie, wyniki zostają; przycisk pokazuje „KONTYNUUJ OD PYTANIA N”.
-- **NOWA GRA** zeruje wyniki (np. przed właściwym quizem po próbie).
+- **Telefon się odświeży / zablokuje / zgubi zasięg** — gracz wraca automatycznie z tymi samymi punktami (odpowiedzi nie da się wysłać drugi raz).
+- **Ekran się odświeży albo zawiesi** — wyniki są na serwerze; po ponownym otwarciu przycisk pokazuje „KONTYNUUJ OD PYTANIA N”. Można nawet przejść na inny laptop.
+- **Kod QR jest stały** (zależy od `roomId` w `config.js`) — można go wydrukować na stoliki.
+- **NOWA GRA** zeruje wyniki (np. po próbie przed właściwym quizem).
 
 ## Edycja pytań
 
-W `config.js` → `questions`:
+**Najprościej:** w lobby kliknij **EDYTUJ PYTANIA**. Edytor otwiera się w osobnym oknie (przeciągnij je na ekran laptopa, żeby publiczność nie widziała odpowiedzi).
+- **+ Dodaj pytanie**, wpisz treść i odpowiedzi, zaznacz **poprawna**, wybierz czas.
+- Pytania można przesuwać ↑ ↓, duplikować i usuwać; do 6 odpowiedzi na pytanie.
+- Zmiany zapisują się same i od razu trafiają na ekran quizu, także w trakcie gry (nowe pytania na końcu pojawią się po bieżącym).
+- **Zdjęcia (opcjonalne):** 🖼 *Dodaj zdjęcie* pod treścią pytania oraz ikonka 🖼 przy każdej odpowiedzi. Odpowiedź może być samym zdjęciem. Zdjęcia są automatycznie zmniejszane, żeby szybko docierały na telefony. Zamiast wgrywać plik możesz też podać link albo nazwę pliku wgranego do repo (🔗).
+- **Tryb tekstowy** pozwala wkleić lub skopiować całą listę naraz.
+- Zmiany są zapamiętane **w tej przeglądarce na tym komputerze**. Żeby były na stałe, kliknij **Pobierz config.js** i podmień ten plik na GitHubie.
+
+Ręcznie w `config.js` → `questions`:
 
 ```
 Treść pytania? [30s]
@@ -62,9 +71,35 @@ Zła odpowiedź
 ```
 
 Gwiazdka `*` = poprawna, pusta linia = kolejne pytanie, `[30s]` (opcjonalnie) = własny limit czasu.
-Można też edytować na miejscu: przycisk **PYTANIA** w lobby (zmiany zapamiętuje ta przeglądarka; **PRZYWRÓĆ Z CONFIG** wraca do wersji z pliku).
 
-## Wymagania techniczne
+Zdjęcia (opcjonalnie) — pliki wgraj do repo obok `index.html`:
 
-- Internet na komputerze ekranu i na telefonach (połączenie przez PeerJS / WebRTC, darmowy serwer PeerJS).
-- Przy bardzo restrykcyjnym Wi-Fi gościnnym część telefonów może nie połączyć się peer-to-peer — wtedy niech gracze użyją danych komórkowych. **Zrób próbę na miejscu przed eventem.**
+```
+Co widać na zdjęciu?
+[zdjęcie] pytanie1.jpg
+Odpowiedź tekstowa
+*Odpowiedź ze zdjęciem [img] odp-b.jpg
+[img] odp-c.jpg
+```
+
+## Serwer — Firebase Realtime Database
+
+Ekran i telefony łączą się przez bazę **Firebase Realtime Database** w projekcie `gryeventowe` (ten sam co ranking gier). Dane quizu są w osobnej gałęzi `quiz/forum-odp-zmiany-2026`, nie mieszają się z rankingiem.
+
+**Jednorazowo sprawdź reguły bazy:** [console.firebase.google.com](https://console.firebase.google.com) → projekt *gryeventowe* → **Realtime Database → Rules**.
+- Jeśli widzisz `".read": true, ".write": true` — nic nie rób.
+- Jeśli widzisz datę, np. `"now < 1760000000000"` (tryb testowy, który wygasa) albo quiz pokazuje „Serwer odmówił zapisu” — wklej i kliknij **Publish**:
+
+```json
+{
+  "rules": {
+    "scores":       { ".read": true, ".write": true },
+    "questionSets": { ".read": true, ".write": true },
+    "quiz":         { ".read": true, ".write": true }
+  }
+}
+```
+
+**Limit darmowego planu (Spark): 100 urządzeń naraz** (ekran + telefony). Przy większej grupie przełącz projekt na plan **Blaze** (płatność za użycie — przy jednym quizie to grosze albo 0 zł, wymaga podpięcia karty).
+
+Pozostałe wymagania: internet na laptopie z ekranem i na telefonach. Zrób próbę na miejscu przed eventem.

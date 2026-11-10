@@ -142,7 +142,8 @@
   </section>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script>
 (() => {
   const CFG = window.QUIZ_CONFIG || {};
@@ -195,8 +196,9 @@
     myName = $('inName').value.trim().slice(0, 18);
     store.set('eq_name', myName);
     joined = true;
-    sendMsg({ type:'name', name:myName });
+    registerPlayer();
     showWait(false);
+    if (lastState) renderState();
   }
   function showWait(next){
     mood(); lastScreen = next ? 'waitNext' : 'wait';
@@ -208,7 +210,7 @@
   /* ---------- pytanie ---------- */
   function showQuestion(d){
     mood(); lastScreen = 'question'; lastQuestion = d;
-    current = { qid:d.qid, options:d.options, recvAt:performance.now(), remainingMs:d.remainingMs, limitMs:d.limitMs };
+    current = { qid:d.qid, options:d.options, recvAt:performance.now(), remainingMs:d.remainingMs, limitMs:d.limitMs, startAt:d.startAt };
     $('qProg').textContent = t('question') + ' ' + (d.qIndex + 1) + ' / ' + d.qTotal;
     $('qText').textContent = d.prompt;
     if (d.image){ $('qImg').src = d.image; $('qImg').hidden = false; } else { $('qImg').hidden = true; $('qImg').removeAttribute('src'); }
@@ -240,21 +242,23 @@
     const box = $('qOpts');
     if (!current || box.classList.contains('locked')) return;
     // czas od pojawienia się pytania (z uwzględnieniem dołączenia w trakcie)
-    const elapsed = (current.limitMs - current.remainingMs) + (performance.now() - current.recvAt);
+    const elapsed = Math.max(0, serverNow() - current.startAt);
     box.classList.add('locked'); btn.classList.add('mine');
     if (navigator.vibrate) navigator.vibrate(30);
-    sendMsg({ type:'answer', qid:current.qid, index:i, elapsedMs:Math.round(elapsed) });
+    answeredQ[current.qid] = i;
+    if (room) room.child('answers/' + current.qid + '/' + pid).set({ index:i, elapsedMs:Math.round(elapsed), at:firebase.database.ServerValue.TIMESTAMP })
+      .catch(() => { setStatus('reconnecting', 'err'); });
   }
 
   /* ---------- wynik ---------- */
   function showResult(d){
     lastScreen = 'result'; lastResult = d; current = null; cancelAnimationFrame(barRaf);
-    const answered = d.answered != null;
+    const answered = d.answered != null && d.answered >= 0;
     mood(d.correct ? 'ok' : 'bad');
     $('rEmoji').textContent = d.correct ? '✅' : (answered ? '❌' : '⏰');
     $('rTitle').textContent = d.correct ? t('ok') : (answered ? t('bad') : t('none'));
     $('rPts').textContent = '+' + d.gained;
-    $('rTime').textContent = d.ms != null ? fmt(d.ms) : '–';
+    $('rTime').textContent = d.ms != null && d.ms >= 0 ? fmt(d.ms) : '–';
     $('rRank').textContent = d.rank > 0 ? d.rank + '/' + d.of : '–';
     $('rScore').textContent = d.score;
     const same = lastQuestion && lastQuestion.qid === d.qid;
@@ -291,67 +295,73 @@
   }
   $('btnLang').addEventListener('click', () => { lang = lang === 'pl' ? 'en' : 'pl'; renderTexts(); });
 
-  /* ---------- połączenie (z automatycznym ponawianiem) ---------- */
-  const hostId = new URLSearchParams(location.search).get('code');
-  let peer = null, conn = null, retryTimer = null;
-  function sendMsg(m){ if (conn && conn.open){ try{ conn.send(m); }catch(e){} } }
-  function connect(){
-    clearTimeout(retryTimer);
-    if (!peer || peer.destroyed){
-      peer = new Peer();
-      peer.on('open', openConn);
-      peer.on('error', err => {
-        // ekran chwilowo niedostępny → po prostu ponów; problem z serwerem/siecią → zbuduj połączenie od nowa
-        if (err.type !== 'peer-unavailable'){ try{ peer.destroy(); }catch(e){} }
-        setStatus('reconnecting', 'err'); scheduleRetry();
-      });
-      peer.on('disconnected', () => { try{ peer.reconnect(); }catch(e){} });
-    } else if (peer.open) openConn();
-  }
-  function openConn(){
-    if (conn){ try{ conn.close(); }catch(e){} }
-    conn = peer.connect(hostId, { reliable:true });
-    conn.on('open', () => {
-      lastMsgAt = Date.now();
-      setStatus('connected', 'on');
-      sendMsg({ type:'hello', pid, name: joined ? myName : '' });
-    });
-    conn.on('data', d => {
-      if (!d || typeof d !== 'object') return;
-      lastMsgAt = Date.now();
-      if (d.type === 'ping'){ sendMsg({ type:'pong' }); return; }
-      if (d.type === 'welcome'){
-        if (d.lang && d.lang !== lang){ lang = d.lang; renderTexts(); }
-        if (typeof d.score === 'number' && d.score > 0) setScore(d.score);
-        if (d.name){ joined = true; myName = d.name; store.set('eq_name', myName); }
-        if (!joined) show('vName');
-      }
-      else if (d.type === 'lang'){ lang = d.lang; renderTexts(); }
-      else if (!joined) return;
-      else if (d.type === 'question') showQuestion(d);
-      else if (d.type === 'ack') {}
-      else if (d.type === 'result') showResult(d);
-      else if (d.type === 'lobby'){ if (typeof d.score === 'number') setScore(d.score); showWait(lastScreen !== 'wait'); }
-      else if (d.type === 'final') showFinal(d);
-    });
-    conn.on('close', () => { setStatus('reconnecting', 'err'); scheduleRetry(); });
-  }
-  function scheduleRetry(){ clearTimeout(retryTimer); if (statusKey !== 'connected') setStatus('reconnecting'); retryTimer = setTimeout(connect, 2000); }
+  /* ---------- serwer (Firebase Realtime Database) ---------- */
+  const ROOM = String(new URLSearchParams(location.search).get('room') || CFG.roomId || '').replace(/[^\w-]/g, '');
+  let db = null, room = null, serverOffset = 0;
+  const serverNow = () => Date.now() + serverOffset;
+  let lastState = null, myResult = null;
+  const answeredQ = {};      // qid -> indeks wybranej odpowiedzi (żeby po odświeżeniu nie odpowiadać drugi raz)
 
-  // Jeśli ekran przestał się odzywać (np. odświeżono go), łączymy się ponownie
-  let lastMsgAt = Date.now();
-  setInterval(() => {
-    if (!hostId || !peer || !peer.open) return;
-    if (Date.now() - lastMsgAt > 7000){ lastMsgAt = Date.now(); setStatus('reconnecting', 'err'); openConn(); }
-  }, 1000);
+  function registerPlayer(){
+    if (!room || !joined) return;
+    const me = room.child('players/' + pid);
+    me.onDisconnect().update({ online:false });
+    me.update({ name:myName, online:true, seen:firebase.database.ServerValue.TIMESTAMP }).catch(() => setStatus('reconnecting', 'err'));
+  }
+
+  function renderState(){
+    const st = lastState; if (!st || !joined) return;
+    if (st.lang && st.lang !== lang){ lang = st.lang; renderTexts(); }
+    if (st.phase === 'question'){
+      if (lastScreen === 'question' && current && current.qid === st.qid) return;
+      const d = Object.assign({}, st, { options: toArr(st.options), optionImages: toArr(st.optionImages) });
+      d.remainingMs = Math.max(0, Math.min(d.limitMs, d.limitMs - (serverNow() - d.startAt)));
+      if (answeredQ[st.qid] != null) d.answered = answeredQ[st.qid];
+      if (d.remainingMs <= 0 && d.answered == null){ showWait(true); return; }
+      showQuestion(d);
+      // po odświeżeniu telefonu sprawdź, czy już odpowiedziano na to pytanie
+      if (d.answered == null) room.child('answers/' + st.qid + '/' + pid).once('value').then(s => {
+        const v = s.val(); if (v && current && current.qid === st.qid){ answeredQ[st.qid] = v.index;
+          const box = $('qOpts'); box.classList.add('locked'); const m = box.children[v.index]; if (m) m.classList.add('mine'); }
+      });
+    } else if (st.phase === 'reveal' || st.phase === 'board'){
+      if (myResult && myResult.type === 'result' && myResult.qid === st.qid){ if (lastScreen !== 'result' || !lastResult || lastResult.qid !== st.qid) showResult(myResult); }
+      else showWait(true);
+    } else if (st.phase === 'final'){
+      if (myResult && myResult.type === 'final') showFinal(myResult); else showWait(true);
+    } else {
+      showWait(lastScreen !== 'wait' && lastScreen !== 'name');
+    }
+  }
+  const toArr = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
+
+  function initServer(){
+    try{
+      firebase.initializeApp(CFG.firebase);
+      db = firebase.database();
+      room = db.ref('quiz/' + ROOM);
+    }catch(e){ setStatus('reconnecting', 'err'); return; }
+    db.ref('.info/serverTimeOffset').on('value', s => { serverOffset = s.val() || 0; });
+    db.ref('.info/connected').on('value', s => {
+      if (s.val()){ setStatus('connected', 'on'); registerPlayer(); }
+      else setStatus('reconnecting', 'err');
+    });
+    room.child('state').on('value', s => { lastState = s.val(); renderState(); });
+    room.child('results/' + pid).on('value', s => { myResult = s.val(); renderState(); });
+    room.child('scores/' + pid + '/score').on('value', s => { const v = s.val(); if (typeof v === 'number') setScore(v); });
+    // imię zapamiętane na serwerze (np. po wyczyszczeniu pamięci telefonu)
+    room.child('players/' + pid + '/name').once('value').then(s => {
+      const n = s.val();
+      if (n && !joined){ joined = true; myName = n; store.set('eq_name', n); registerPlayer(); showWait(false); renderState(); }
+    });
+  }
 
   renderTexts();
-  if (!hostId){ setStatus('noCode', 'err'); show('vName'); $('btnJoin').disabled = true; }
+  if (!ROOM || typeof firebase === 'undefined'){ setStatus('noCode', 'err'); show('vName'); $('btnJoin').disabled = true; }
   else {
     setStatus('connecting');
-    show(myName ? 'vWait' : 'vName');
-    if (myName){ $('waitTitle').textContent = t('waitT'); $('waitSub').textContent = t('waitS'); }
-    connect();
+    if (myName){ joined = true; showWait(false); } else show('vName');
+    initServer();
   }
 })();
 </script>

@@ -224,7 +224,8 @@
   <span class="kbd" id="tKbd">spacja / → = dalej</span>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (() => {
@@ -245,7 +246,7 @@
       hint:'<b>Format:</b> pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką *. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Pytania zapisują się automatycznie w tej przeglądarce.',
       noQ:'Nie rozpoznano żadnego pytania — sprawdź format.', confirmNew:'Wyzerować wyniki i zacząć nową grę?',
       restored:n=>'Przywrócono wyniki poprzedniej sesji ('+n+' graczy). „NOWA GRA” zaczyna od zera.',
-      peerErr:'Błąd połączenia: ', reconnecting:'Łączenie z serwerem gry…', connectingSrv:'Łączenie z serwerem gry…' },
+      reconnecting:'Łączenie z serwerem gry…', fbErr:'Błąd serwera: ', permErr:'Serwer odmówił zapisu — ustaw reguły bazy Firebase (README).' },
     en:{ players:'players', join:'Join the game!', joinSub:'Scan the code with your phone, enter your name and wait for the first question.',
       playersH:'Players', noPlayers:'Waiting for the first players…', question:'QUESTION', answers:'answers', pts:'pts',
       start:'START QUIZ', resume:'CONTINUE FROM QUESTION ', reveal:'REVEAL ANSWER', board:'LEADERBOARD', next:'NEXT QUESTION',
@@ -255,14 +256,14 @@
       hint:'<b>Format:</b> question on the first line, answers below (one per line), mark the correct one with *. A blank line separates questions. Optional <b>[30s]</b> at the end of a question = custom time limit. Questions are saved automatically in this browser.',
       noQ:'No question recognised — check the format.', confirmNew:'Reset scores and start a new game?',
       restored:n=>'Restored scores from the previous session ('+n+' players). "NEW GAME" starts from scratch.',
-      peerErr:'Connection error: ', reconnecting:'Connecting to the game server…', connectingSrv:'Connecting to the game server…' }
+      reconnecting:'Connecting to the game server…', fbErr:'Server error: ', permErr:'Server refused to save — set Firebase database rules (README).' }
   };
   let lang = CFG.defaultLang === 'en' ? 'en' : 'pl';
   const t = k => STR[lang][k];
 
   /* ---------- STAN ---------- */
-  const LS = { questions:'eq_questions', session:'eq_session', hostId:'eq_hostId' };
-  const players = new Map();      // pid -> {pid,name,conn,online,score,timeMs,correct,lastGain,prevRank}
+  const LS = { questions:'eq_questions' };
+  const players = new Map();      // pid -> {pid,name,online,score,timeMs,correct,lastGain,prevRank}
   let questions = [];
   let qIndex = 0;                 // indeks bieżącego / następnego pytania
   let state = 'lobby';            // lobby | question | reveal | board | final
@@ -334,62 +335,100 @@
   }
   const fmtTime = ms => !ms ? '–' : (ms / 1000).toFixed(2).replace('.', lang === 'pl' ? ',' : '.') + ' s';
 
-  /* ---------- SESJA (odporność na odświeżenie ekranu) ---------- */
-  function saveSession(){
-    const data = { qIndex, players: Array.from(players.values()).map(p => ({ pid:p.pid, name:p.name, score:p.score, timeMs:p.timeMs, correct:p.correct })) };
-    store.set(LS.session, JSON.stringify(data));
-  }
-  function loadSession(){
+  /* ---------- SERWER (Firebase Realtime Database) ----------
+     quiz/<roomId>/state            — co jest teraz na ekranie (czyta każdy telefon)
+     quiz/<roomId>/players/<pid>    — gracze (zapisują telefony: imię, online)
+     quiz/<roomId>/answers/<q>/<pid>— odpowiedzi (zapisują telefony)
+     quiz/<roomId>/results/<pid>    — wynik rundy / finał dla gracza (zapisuje ekran)
+     quiz/<roomId>/scores/<pid>     — punkty (zapisuje ekran; po odświeżeniu ekranu wyniki wracają)
+  */
+  const ROOM = String(CFG.roomId || 'quiz').replace(/[^\w-]/g, '');
+  let db = null, room = null, serverOffset = 0, connected = false;
+  const serverNow = () => Date.now() + serverOffset;
+  function initServer(){
     try{
-      const d = JSON.parse(store.get(LS.session) || 'null');
-      if (!d) return;
-      (d.players || []).forEach(p => players.set(p.pid, Object.assign({ conn:null, online:false, lastGain:0, prevRank:null }, p)));
-      qIndex = d.qIndex || 0;
-      const n = Array.from(players.values()).filter(p => p.score > 0).length;
-      if (n > 0 || qIndex > 0) $('restoreNote').textContent = t('restored')(players.size);
-    }catch(e){}
+      firebase.initializeApp(CFG.firebase);
+      db = firebase.database();
+      room = db.ref('quiz/' + ROOM);
+    }catch(e){ showConn('err', t('fbErr') + (e && e.message || e)); return false; }
+    db.ref('.info/serverTimeOffset').on('value', s => { serverOffset = s.val() || 0; });
+    db.ref('.info/connected').on('value', s => { connected = !!s.val(); showConn(connected ? 'ok' : 'wait'); });
+    return true;
   }
+  function showConn(kind, msg){
+    $('joinUrl').textContent = kind === 'ok' ? '' : (msg || t('reconnecting'));
+  }
+  function dbErr(e){ if (e) showConn('err', (String(e.code || e.message || e).includes('PERMISSION') ? t('permErr') : t('fbErr') + (e.message || e))); }
+  function write(updates){ return room.update(updates).catch(dbErr); }
 
-  /* ---------- KOMUNIKACJA ---------- */
-  function send(p, msg){ if (p && p.conn && p.conn.open){ try{ p.conn.send(msg); }catch(e){} } }
-  function broadcast(fn){ players.forEach(p => { if (p.online) send(p, typeof fn === 'function' ? fn(p) : fn); }); }
-  function questionMsg(){
-    const q = questions[round.qi];
-    return { type:'question', qid:round.qi, qIndex:round.qi, qTotal:questions.length, prompt:q.prompt, image:q.image, options:q.options, optionImages:q.optionImages,
-             limitMs:round.limitMs, remainingMs:Math.max(0, round.limitMs - (performance.now() - round.startAt)) };
+  function saveScores(extra){
+    const u = { 'session/qIndex': qIndex };
+    players.forEach(p => { u['scores/' + p.pid] = { name:p.name || '', score:p.score, timeMs:Math.round(p.timeMs), correct:p.correct }; });
+    return write(Object.assign(u, extra || {}));
   }
-  function stateMsgFor(p){
-    if (state === 'question' && round){
-      const m = questionMsg();
-      if (round.answers.has(p.pid)) m.answered = round.answers.get(p.pid).index;
-      return m;
-    }
-    if (state === 'final') return finalMsgFor(p);
-    if ((state === 'reveal' || state === 'board') && round && p.lastResult && p.lastResult.qid === round.qi) return p.lastResult;
-    return { type:'lobby', score:p.score };
+  function loadScores(){
+    return room.once('value').then(snap => {
+      const d = snap.val() || {};
+      qIndex = (d.session && d.session.qIndex) || 0;
+      const sc = d.scores || {}, pl = d.players || {};
+      Object.keys(Object.assign({}, sc, pl)).forEach(pid => {
+        const s = sc[pid] || {}, p = pl[pid] || {};
+        players.set(pid, { pid, name:p.name || s.name || null, online:!!p.online, score:s.score || 0, timeMs:s.timeMs || 0, correct:s.correct || 0, lastGain:0, prevRank:null });
+      });
+      if (Object.keys(sc).length || qIndex > 0) $('restoreNote').textContent = t('restored')(Object.keys(sc).length);
+    }).catch(dbErr);
   }
-  function finalMsgFor(p){
-    const r = ranked(); const pos = r.findIndex(x => x.pid === p.pid);
-    return { type:'final', rank: pos + 1, of: r.length, score: p.score, timeMs: p.timeMs };
+  function listenPlayers(){
+    room.child('players').on('value', snap => {
+      const d = snap.val() || {};
+      Object.keys(d).forEach(pid => {
+        const v = d[pid] || {};
+        let p = players.get(pid);
+        if (!p){ p = { pid, name:null, online:false, score:0, timeMs:0, correct:0, lastGain:0, prevRank:null }; players.set(pid, p); }
+        p.name = v.name ? String(v.name).trim().slice(0, 18) : p.name;
+        p.online = !!v.online;
+      });
+      players.forEach((p, pid) => { if (!d[pid]) p.online = false; });
+      renderPlayers(); updateControls();
+      if (state === 'question') checkAllAnswered();
+    }, dbErr);
   }
+  function stateBase(phase){ return { phase, lang, qTotal:questions.length, at:serverNow() }; }
 
-  function onAnswer(p, data){
-    if (state !== 'question' || !round || data.qid !== round.qi || round.answers.has(p.pid)) return;
-    const hostMs = performance.now() - round.startAt;
-    if (hostMs > round.limitMs + 1500) return;              // spóźnione (z marginesem na sieć)
+  let answersRef = null;
+  function listenAnswers(qi){
+    if (answersRef) answersRef.off();
+    answersRef = room.child('answers/' + qi);
+    answersRef.on('child_added', snap => onAnswer(snap.key, snap.val() || {}, qi));
+  }
+  function stopAnswers(){ if (answersRef){ answersRef.off(); answersRef = null; } }
+
+  function onAnswer(pid, data, qi){
+    if (state !== 'question' || !round || qi !== round.qi || round.answers.has(pid)) return;
+    let p = players.get(pid);
+    if (!p){ p = { pid, name:null, online:true, score:0, timeMs:0, correct:0, lastGain:0, prevRank:null }; players.set(pid, p); }
+    // czas wg serwera (moment zapisu odpowiedzi) — chroni przed spóźnionymi odpowiedziami
+    const srvMs = (Number(data.at) || serverNow()) - round.startAt;
+    if (srvMs > round.limitMs + 2000) return;
     const idx = parseInt(data.index, 10);
     const q = questions[round.qi];
     if (!(idx >= 0 && idx < q.options.length)) return;
-    // Czas mierzony na telefonie (sprawiedliwy niezależnie od opóźnień sieci), ograniczony czasem z ekranu
+    // czas z telefonu (sprawiedliwy mimo opóźnień sieci), ale nie dłuższy niż wg serwera
     let ms = Number(data.elapsedMs);
-    if (!isFinite(ms) || ms < 0) ms = hostMs;
-    ms = Math.min(ms, hostMs, round.limitMs);
+    if (!isFinite(ms) || ms < 0) ms = srvMs;
+    ms = Math.max(0, Math.min(ms, Math.max(srvMs, 0), round.limitMs));
     const correct = idx === q.correctIndex;
-    round.answers.set(p.pid, { index:idx, ms, correct, points: correct ? pointsFor(ms, round.limitMs) : SC.wrongPoints });
-    send(p, { type:'ack', qid:round.qi, index:idx });
+    round.answers.set(pid, { index:idx, ms, correct, points: correct ? pointsFor(ms, round.limitMs) : SC.wrongPoints });
     $('ansCount').textContent = round.answers.size;
-    const online = Array.from(players.values()).filter(x => x.online && x.name).length;
-    if (round.answers.size >= online && online > 0) setTimeout(() => { if (state === 'question') reveal(); }, 700);
+    checkAllAnswered();
+  }
+  function checkAllAnswered(){
+    // koniec rundy, gdy odpowiedział każdy gracz, który jest teraz online
+    if (!round) return;
+    const online = Array.from(players.values()).filter(x => x.online && x.name);
+    if (online.length && online.every(x => round.answers.has(x.pid))) setTimeout(() => {
+      if (state === 'question' && Array.from(players.values()).filter(x => x.online && x.name).every(x => round.answers.has(x.pid))) reveal();
+    }, 900);
   }
 
   /* ---------- WIDOKI ---------- */
@@ -427,7 +466,7 @@
   }
   function startQuestion(){
     const q = questions[qIndex];
-    round = { qi:qIndex, startAt:performance.now(), limitMs:q.limit * 1000, answers:new Map() };
+    round = { qi:qIndex, startAt:serverNow() + 400, limitMs:q.limit * 1000, answers:new Map() };
     state = 'question';
     $('qProg').textContent = t('question') + ' ' + (qIndex + 1) + ' / ' + questions.length;
     $('qPts').textContent = SC.maxPoints + ' ' + t('pts');
@@ -436,14 +475,16 @@
     setImg('qImg', 'qImgWrap', q.image);
     $('ansCount').textContent = '0';
     show('vQuestion');
-    broadcast(questionMsg());
+    listenAnswers(round.qi);
+    write({ ['answers/' + round.qi]: null, state: Object.assign(stateBase('question'), { qid:round.qi, qIndex:round.qi, prompt:q.prompt,
+      image:q.image || null, options:q.options, optionImages:q.optionImages.map(x => x || ''), limitMs:round.limitMs, startAt:round.startAt }) });
     clearInterval(timerInt);
     tick(); timerInt = setInterval(tick, 200);
     updateControls();
   }
   function tick(){
     if (!round) return;
-    const left = Math.max(0, round.limitMs - (performance.now() - round.startAt));
+    const left = Math.max(0, Math.min(round.limitMs, round.limitMs - (serverNow() - round.startAt)));
     const sec = Math.ceil(left / 1000);
     $('timerNum').textContent = sec;
     $('timerBar').style.strokeDashoffset = (276.46 * (1 - left / round.limitMs)).toFixed(1);
@@ -464,7 +505,7 @@
       if (a.correct){ p.correct++; p.timeMs += a.ms; }
     });
     qIndex = round.qi + 1;
-    saveSession();
+    stopAnswers();
 
     const counts = q.options.map(() => 0);
     round.answers.forEach(a => counts[a.index]++);
@@ -483,14 +524,15 @@
     show('vReveal');
     if (fastest.length) confetti(1200, 70);
 
-    const r = ranked();
+    const r = ranked(), u = {};
     players.forEach(p => {
       const a = round.answers.get(p.pid);
-      p.lastResult = { type:'result', qid:round.qi, correctIndex:q.correctIndex, answered: a ? a.index : null,
-        correct: !!(a && a.correct), gained: a ? a.points : 0, ms: a ? a.ms : null,
+      u['results/' + p.pid] = { type:'result', qid:round.qi, correctIndex:q.correctIndex, answered: a ? a.index : -1,
+        correct: !!(a && a.correct), gained: a ? a.points : 0, ms: a ? Math.round(a.ms) : -1,
         score: p.score, rank: r.findIndex(x => x.pid === p.pid) + 1, of: r.length };
-      send(p, p.lastResult);
     });
+    u.state = Object.assign(stateBase('reveal'), { qid:round.qi, qIndex:round.qi });
+    saveScores(u);
     updateControls();
   }
 
@@ -501,7 +543,8 @@
       '<div class="row' + (i < 3 ? ' top' + (i + 1) : '') + '"><div class="pos">' + (i + 1) + '</div><div class="nm">' + esc(p.name) +
       (p.lastGain > 0 ? '<span class="delta">+' + p.lastGain + '</span>' : '') + '</div><div class="pts">' + p.score + '</div><div class="tm">' + fmtTime(p.timeMs) + '</div></div>').join('');
   }
-  function showBoard(){ state = 'board'; renderBoard(); show('vBoard'); updateControls(); }
+  function showBoard(){ state = 'board'; renderBoard(); show('vBoard'); updateControls();
+    write({ state: Object.assign(stateBase('board'), { qid: round ? round.qi : -1 }) }); }
 
   function showFinal(){
     state = 'final';
@@ -512,14 +555,17 @@
       '<div class="row"><div class="pos">' + (i + 4) + '</div><div class="nm">' + esc(p.name) + '</div><div class="pts">' + p.score + '</div><div class="tm">' + fmtTime(p.timeMs) + '</div></div>').join('');
     show('vFinal');
     setTimeout(() => confetti(3500, 220), 1900);
-    players.forEach(p => send(p, finalMsgFor(p)));
+    const u = { state: stateBase('final') };
+    players.forEach(p => { const pos = r.findIndex(x => x.pid === p.pid);
+      u['results/' + p.pid] = { type:'final', rank: pos + 1, of: r.length, score: p.score, timeMs: Math.round(p.timeMs) }; });
+    write(u);
     updateControls();
   }
 
   function showLobby(){
-    state = 'lobby'; round = null; clearInterval(timerInt);
+    state = 'lobby'; round = null; clearInterval(timerInt); stopAnswers();
     show('vLobby'); renderPlayers();
-    broadcast(p => ({ type:'lobby', score:p.score }));
+    write({ state: stateBase('lobby') });
     updateControls();
   }
 
@@ -563,8 +609,9 @@
   });
   $('btnNew').addEventListener('click', () => {
     if (!confirm(t('confirmNew'))) return;
-    players.forEach((p, pid) => { if (!p.online) players.delete(pid); else Object.assign(p, { score:0, timeMs:0, correct:0, lastGain:0 }); });
-    qIndex = 0; saveSession(); $('restoreNote').textContent = ''; showLobby();
+    const u = { answers:null, results:null, scores:null, 'session/qIndex':0 };
+    players.forEach((p, pid) => { if (!p.online){ players.delete(pid); u['players/' + pid] = null; } else Object.assign(p, { score:0, timeMs:0, correct:0, lastGain:0 }); });
+    qIndex = 0; write(u); $('restoreNote').textContent = ''; showLobby();
   });
   $('btnCsv').addEventListener('click', () => {
     const rows = [['Miejsce','Gracz','Punkty','Poprawne','Czas poprawnych (s)']].concat(
@@ -592,7 +639,7 @@
     renderPlayers(); updateControls();
     if (state === 'board') renderBoard();
   }
-  $('btnLang').addEventListener('click', () => { lang = lang === 'pl' ? 'en' : 'pl'; renderTexts(); broadcast({ type:'lang', lang }); });
+  $('btnLang').addEventListener('click', () => { lang = lang === 'pl' ? 'en' : 'pl'; renderTexts(); write({ 'state/lang': lang }); });
 
   /* ---------- KONFETTI ---------- */
   function confetti(duration, count){
@@ -615,93 +662,21 @@
     })(t0);
   }
 
-  /* ---------- PEERJS ---------- */
-  let hostId = store.get(LS.hostId);
-  if (!hostId) hostId = newHostId();
-  let peer, retry = 0;
-  function newHostId(){ const id = 'eventquiz-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); store.set(LS.hostId, id); return id; }
-  let restartT = null;
-  function restartPeer(delay){
-    clearTimeout(restartT);
-    restartT = setTimeout(() => { try{ peer && peer.destroy(); }catch(e){} startPeer(); }, delay);
+  /* ---------- START ---------- */
+  function showQr(){
+    const dir = location.pathname.endsWith('/') ? location.pathname : location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
+    const url = new URL(dir + 'play.html', location.origin); url.searchParams.set('room', ROOM);
+    $('qr').innerHTML = '';
+    new QRCode($('qr'), { text:url.toString(), width:512, height:512, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
   }
-  function startPeer(){
-    if (!$('qr').children.length) $('qr').innerHTML = '<div class="qr-wait">' + t('connectingSrv') + '</div>';
-    peer = new Peer(hostId, { debug:0, config:{ iceServers:[{ urls:'stun:stun.l.google.com:19302' }, { urls:'stun:global.stun.twilio.com:3478' }] } });
-    peer.on('open', id => {
-      retry = 0;
-      const dir = location.pathname.endsWith('/') ? location.pathname : location.pathname.slice(0, location.pathname.lastIndexOf('/') + 1);
-      const url = new URL(dir + 'play.html', location.origin); url.searchParams.set('code', id);
-      $('qr').innerHTML = '';
-      new QRCode($('qr'), { text:url.toString(), width:512, height:512, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
-      $('joinUrl').textContent = '';
-    });
-    peer.on('error', err => {
-      if (err.type === 'peer-unavailable') return;              // telefon, który już zniknął — nic się nie dzieje
-      if (err.type === 'unavailable-id'){
-        // ten sam kod jest jeszcze zajęty (np. stara karta z quizem) — po kilku próbach bierzemy nowy kod
-        retry++;
-        if (retry > 6){ hostId = newHostId(); retry = 0; }
-        restartPeer(2500); return;
-      }
-      // problemy z siecią / serwerem połączeń — ponawiamy automatycznie
-      retry++;
-      $('joinUrl').textContent = t('reconnecting') + ' (' + retry + ')';
-      restartPeer(Math.min(2000 * retry, 10000));
-    });
-    peer.on('disconnected', () => {
-      if (peer.destroyed) return;
-      $('joinUrl').textContent = t('reconnecting');
-      setTimeout(() => { try{ if (!peer.destroyed && peer.disconnected) peer.reconnect(); }catch(e){ restartPeer(2000); } }, 1000);
-    });
-    peer.on('connection', conn => {
-      let pid = null;
-      conn.on('data', data => {
-        if (!data || typeof data !== 'object') return;
-        if (data.type === 'hello'){
-          pid = String(data.pid || conn.peer).slice(0, 40);
-          let p = players.get(pid);
-          if (!p){ p = { pid, name:null, conn:null, online:false, score:0, timeMs:0, correct:0, lastGain:0, prevRank:null }; players.set(pid, p); }
-          if (p.conn && p.conn !== conn){ try{ p.conn.close(); }catch(e){} }
-          p.conn = conn; p.online = true; p.lastSeen = Date.now();
-          if (data.name) p.name = String(data.name).trim().slice(0, 18);
-          renderPlayers(); updateControls(); saveSession();
-          send(p, { type:'welcome', name:p.name, score:p.score, lang });
-          if (p.name) send(p, stateMsgFor(p));
-        } else if (pid && data.type === 'name'){
-          const p = players.get(pid); if (!p) return;
-          const had = !!p.name;
-          p.name = String(data.name || '').trim().slice(0, 18) || p.name;
-          renderPlayers(); saveSession();
-          if (!had && p.name) send(p, stateMsgFor(p));
-        } else if (pid && data.type === 'pong'){
-          const p = players.get(pid); if (p) p.lastSeen = Date.now();
-        } else if (pid && data.type === 'answer'){
-          onAnswer(players.get(pid), data);
-        }
-      });
-      conn.on('close', () => {
-        const p = pid && players.get(pid);
-        if (p && p.conn === conn){ p.online = false; p.conn = null; renderPlayers(); }
-      });
-    });
-  }
-
-  // Heartbeat: telefony wiedzą, że ekran żyje; ekran wie, kto naprawdę jest online
-  setInterval(() => {
-    const now = Date.now(); let changed = false;
-    players.forEach(p => {
-      if (!p.online) return;
-      if (p.lastSeen && now - p.lastSeen > 20000){ p.online = false; p.conn = null; changed = true; return; }
-      send(p, { type:'ping' });
-    });
-    if (changed) renderPlayers();
-  }, 2000);
-
-  loadSession();
   renderTexts();
-  showLobby();
-  startPeer();
+  show('vLobby');
+  showQr();               // kod QR jest stały dla eventu — można go też wydrukować na stoliki
+  if (typeof firebase === 'undefined'){ showConn('err', t('fbErr') + 'SDK'); }
+  else if (initServer()){
+    showConn('wait');
+    loadScores().then(() => { listenPlayers(); showLobby(); });
+  }
 })();
 </script>
 </body>

@@ -31,6 +31,22 @@ window.QUIZ_CONFIG = {
   // Napis przy polu imienia na telefonie (np. przy rywalizacji stolikowej)
   nameLabel: { pl: 'Imię albo nazwa stolika', en: 'Your name or table name' },
 
+  /* ---------- SERWER (Firebase Realtime Database) ---------- */
+  // Projekt „gryeventowe” — ten sam, którego używa ranking-gier.
+  // Dane quizu trafiają do osobnej gałęzi: quiz/<roomId>.
+  firebase: {
+    apiKey: "AIzaSyAZEL93JgA5LfmiAWLJFAaLN2F7q-e5QgY",
+    authDomain: "gryeventowe.firebaseapp.com",
+    databaseURL: "https://gryeventowe-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "gryeventowe",
+    storageBucket: "gryeventowe.firebasestorage.app",
+    messagingSenderId: "15592080978",
+    appId: "1:15592080978:web:fa8fc79a3f0a3ad3b6418b"
+  },
+  // Nazwa „pokoju” gry. Kod QR zależy tylko od niej, więc jest stały
+  // (można go wydrukować). Na kolejny event zmień nazwę = czysta gra.
+  roomId: 'forum-odp-zmiany-2026',
+
   /* ---------- PUNKTACJA ---------- */
   scoring: {
     timeLimitSec: 20,     // domyślny czas na pytanie (można nadpisać per pytanie: [30s])
