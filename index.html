@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ekran quizu</title>
-<script src="config.js?v=7"></script>
-<script src="brand.js?v=7"></script>
-<script src="quiz-core.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="brand.js?v=8"></script>
+<script src="quiz-core.js?v=8"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -325,7 +325,7 @@
   const QC = window.QuizCore;
   let serverList = null;
   function sourceItems(){
-    if (serverList) return serverList.map(QC.normalizeItem).filter(q => q.ok !== false && !QC.problems(q).length);
+    if (serverList) return serverList.map(QC.normalizeItem).filter(q => !QC.problems(q).length);
     if (Array.isArray(CFG.questionsList) && CFG.questionsList.length) return CFG.questionsList.map(QC.normalizeItem).filter(q => !QC.problems(q).length);
     return QC.parseText(CFG.questions || '', SC).map(QC.normalizeItem).filter(q => !QC.problems(q).length);
   }
@@ -802,7 +802,7 @@
     showConn('wait');
     room.child('questions').on('value', s => {
       const v = s.val();
-      serverList = v && v.list ? QC.toArr(v.list) : null;
+      serverList = v && v.list && (v.setVersion || 1) === (CFG.questionsVersion || 1) ? QC.toArr(v.list) : null;
       onQuestionsChanged();
     }, dbErr);
     loadScores().then(() => { listenPlayers(); showLobby(); });

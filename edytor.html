@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Edytor pytań</title>
-<script src="config.js?v=7"></script>
-<script src="brand.js?v=7"></script>
-<script src="quiz-core.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="brand.js?v=8"></script>
+<script src="quiz-core.js?v=8"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -159,7 +159,9 @@
     return n;
   }
 
-  let qs = (() => { try{ const d = JSON.parse(store.get(KEY) || 'null'); if (Array.isArray(d)) return d.map(QC.normalizeItem); }catch(e){} return configItems(); })();
+  const SETV = CFG.questionsVersion || 1;
+  const sameSet = v => !!(v && v.list && (v.setVersion || 1) === SETV);
+  let qs = (() => { try{ const d = JSON.parse(store.get(KEY) || 'null'); if (d && d.v === (CFG.questionsVersion || 1) && Array.isArray(d.list)) return d.list.map(QC.normalizeItem); }catch(e){} return configItems(); })();
   let onServer = false;
 
   /* ---- serwer ---- */
@@ -174,10 +176,10 @@
   function save(){
     clearTimeout(saveT);
     saveT = setTimeout(() => {
-      store.set(KEY, JSON.stringify(qs));
+      store.set(KEY, JSON.stringify({ v:SETV, list:qs }));
       if (qRef){
         saving = true; renderStatus(); myLastWrite = Date.now();
-        qRef.set({ list: JSON.parse(JSON.stringify(toServer())), updatedAt: firebase.database.ServerValue.TIMESTAMP, by: myId })
+        qRef.set({ list: JSON.parse(JSON.stringify(toServer())), setVersion: SETV, updatedAt: firebase.database.ServerValue.TIMESTAMP, by: myId })
           .then(() => { onServer = true; saving = false; renderStatus(); })
           .catch(e => { saving = false; renderStatus(); toast('⚠ Nie udało się zapisać na serwerze (' + (e.code || e.message) + '). Zmiany są tylko w tej przeglądarce.', true); });
       }
@@ -402,11 +404,11 @@
       const v = snap.val();
       if (first){
         first = false;
-        if (v && v.list){ qs = QC.toArr(v.list).map(QC.normalizeItem); onServer = true; render(); }
-        else renderStatus();
+        if (sameSet(v)){ qs = QC.toArr(v.list).map(QC.normalizeItem); onServer = true; render(); }
+        else { qs = configItems(); render(); if (v && v.list) toast('Wczytano aktualny zestaw pytań z config.js (stara wersja na serwerze zostanie zastąpiona przy pierwszej zmianie)'); }
         return;
       }
-      if (!v || v.by === myId || saving || Date.now() - myLastWrite < 1500) return;
+      if (!sameSet(v) || v.by === myId || saving || Date.now() - myLastWrite < 1500) return;
       const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('list').contains(document.activeElement);
       if (typing) return;
       qs = QC.toArr(v.list).map(QC.normalizeItem); onServer = true; render(); toast('Wczytano zmiany z innego komputera');
