@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ekran quizu</title>
-<script src="config.js?v=6"></script>
-<script src="brand.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="brand.js?v=7"></script>
+<script src="quiz-core.js?v=7"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -63,46 +64,87 @@
   .hint{ font-size:12px; color:var(--muted); line-height:1.6; }
   #restoreNote{ font-size:13px; color:var(--accent); }
 
-  /* ---- QUESTION ---- */
-  #vQuestion, #vReveal{ flex-direction:column; gap:18px; }
-  .q-top{ display:flex; align-items:center; justify-content:space-between; gap:24px; }
-  .q-progress{ color:var(--muted); font-weight:700; font-size:16px; letter-spacing:1px; }
-  .q-text{ font-family:var(--font-heading); font-weight:800; font-size:clamp(26px, 4.2vw, 54px); line-height:1.2; text-align:center; padding:0 4%; flex:0 0 auto; }
-  .q-mid{ flex:1; display:flex; align-items:center; justify-content:center; gap:40px; min-height:0; }
-  .timer{ position:relative; width:150px; height:150px; flex:0 0 auto; }
+  /* ---- QUESTION / REVEAL (układ wg makiet) ---- */
+  #vQuestion{ flex-direction:column; gap:14px; }
+  .qs-prog{ display:flex; align-items:center; gap:18px; }
+  .pbar{ flex:1; height:6px; border-radius:3px; background:color-mix(in srgb, var(--text) 14%, transparent); overflow:hidden; }
+  .pbar i{ display:block; height:100%; width:0; background:var(--accent); border-radius:3px; transition:width .5s; }
+  .qs-num{ color:var(--accent); font-weight:800; font-size:20px; letter-spacing:.5px; white-space:nowrap; }
+  .qs-row{ display:flex; align-items:center; gap:18px; }
+  .badge{ background:var(--accent); color:#06223F; font-weight:800; font-size:clamp(15px, 1.4vw, 22px); letter-spacing:.3px; border-radius:999px; padding:10px 24px; text-transform:uppercase; }
+  .badge:empty{ display:none; }
+  .qs-row .sp{ flex:1; }
+  .ans-info{ color:var(--muted); font-weight:700; font-size:16px; }
+  .timer{ position:relative; width:84px; height:84px; flex:0 0 auto; }
   .timer svg{ width:100%; height:100%; transform:rotate(-90deg); }
-  .timer .track{ stroke:var(--surface); }
+  .timer .track{ stroke:color-mix(in srgb, var(--text) 14%, transparent); }
   .timer .bar{ stroke:var(--accent); transition:stroke-dashoffset .25s linear, stroke .3s; }
   .timer.low .bar{ stroke:var(--wrong); }
-  .timer .num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-weight:800; font-size:52px; }
-  .answered{ text-align:center; }
-  .answered .big{ font-family:var(--font-heading); font-weight:800; font-size:52px; }
-  .answered .lbl{ color:var(--muted); font-size:15px; }
-  .opts{ display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:0 0 auto; }
-  .opt{ position:relative; display:flex; align-items:center; gap:16px; padding:20px 22px; border-radius:16px; font-weight:700; font-size:clamp(18px, 2.2vw, 28px); color:#fff; overflow:hidden; transition:opacity .3s, transform .3s; }
-  .opt .L{ flex:0 0 auto; width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,.22); display:flex; align-items:center; justify-content:center; font-weight:800; }
-  .opt .T{ flex:1; position:relative; z-index:1; }
-  .opt .cnt{ position:relative; z-index:1; font-weight:800; }
-  .opt .fill{ position:absolute; inset:0 auto 0 0; background:rgba(0,0,0,.18); width:0; transition:width .8s ease; }
-  .qimg-wrap{ display:none; flex:1; min-width:0; height:100%; max-height:100%; align-items:center; justify-content:center; }
-  .qimg-wrap.on{ display:flex; }
-  .qimg-wrap img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.35); }
-  .r-mid{ flex:1; min-height:0; display:flex; justify-content:center; }
-  .opt .oimg{ position:relative; z-index:1; flex:0 0 auto; height:min(12vh, 110px); width:min(12vh, 110px); object-fit:cover; border-radius:10px; background:rgba(255,255,255,.15); margin:-8px 0; }
-  .opt.img-only .oimg{ height:min(16vh, 150px); width:auto; max-width:70%; aspect-ratio:auto; object-fit:contain; margin:-10px auto; }
-  .opt.img-only .T{ display:none; }
-  .opt0{ background:var(--a0); } .opt1{ background:var(--a1); } .opt2{ background:var(--a2); } .opt3{ background:var(--a3); }
-  .opt4{ background:#7A8A99; } .opt5{ background:#56606B; }
-  #vReveal .opt.dim{ opacity:.28; }
-  #vReveal .opt.ok{ outline:4px solid var(--correct); outline-offset:3px; transform:scale(1.02); }
-  .opt.ok .L::after{ content:'✓'; }
-  .opt.ok .L span{ display:none; }
+  .timer .num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--font-body); font-weight:800; font-size:30px; }
+  .timer.done{ visibility:hidden; }
+  .q-text{ font-family:var(--font-body); font-style:normal; font-weight:700; font-size:clamp(28px, 3.5vw, 60px); line-height:1.18; max-width:94%; }
+  .q-text:empty{ display:none; }
 
-  .round-top{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .panel{ margin-top:auto; background:#F3F8F6; color:#0F2537; border-radius:28px; padding:clamp(18px, 2.4vw, 40px) clamp(20px, 3vw, 56px); display:flex; flex-direction:column; justify-content:center; gap:14px; min-height:26vh; }
+  .panel.split{ flex-direction:row; align-items:center; gap:clamp(20px, 3vw, 56px); }
+  .panel.split > .pimg{ flex:0 1 auto; max-width:46%; max-height:34vh; object-fit:contain; border-radius:16px; }
+  .panel.split > .pbody{ flex:1; min-width:0; display:flex; flex-direction:column; gap:14px; }
+  .photo{ flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  .photo img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:24px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .phint{ text-align:center; color:#2B7A63; font-weight:600; font-size:clamp(14px, 1.35vw, 22px); }
+  .phint.top{ color:#0F2537; font-weight:700; font-size:clamp(18px, 1.8vw, 30px); }
+
+  .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .tiles.c3{ grid-template-columns:repeat(3, 1fr); }
+  .tiles.c1{ grid-template-columns:1fr; }
+  .tile{ position:relative; display:flex; align-items:center; gap:18px; background:#fff; border:2px solid #D2E2DD; border-radius:16px; padding:clamp(10px, 1vw, 16px) clamp(12px, 1.2vw, 20px); font-weight:600; font-size:clamp(16px, 1.7vw, 30px); overflow:hidden; transition:opacity .3s, border-color .3s, background .3s; }
+  .tile .mk{ position:relative; z-index:1; flex:0 0 auto; width:clamp(40px, 3.6vw, 62px); height:clamp(40px, 3.6vw, 62px); border-radius:12px; background:#E3F6E5; display:flex; align-items:center; justify-content:center; font-weight:800; }
+  .tile .mk.box{ width:clamp(30px, 2.6vw, 44px); height:clamp(30px, 2.6vw, 44px); background:#F3F8F6; border:2px solid #8DB4A9; border-radius:9px; }
+  .tile .tt{ position:relative; z-index:1; flex:1; }
+  .tile .oimg{ position:relative; z-index:1; height:clamp(54px, 9vh, 110px); width:auto; max-width:40%; object-fit:contain; border-radius:10px; }
+  .tile .cnt{ position:relative; z-index:1; font-weight:800; color:#0F2537; }
+  .tile .fill{ position:absolute; inset:0 auto 0 0; width:0; background:#E3F0EC; transition:width .8s ease; }
+  .tile.ok{ border-color:var(--correct); background:#EAF9EF; }
+  .tile.ok .mk{ background:var(--correct); color:#fff; border-color:var(--correct); }
+  .tile.ok .fill{ background:#D3F2DE; }
+  .tile.dim{ opacity:.45; }
+
+  .finput{ display:flex; align-items:center; gap:16px; background:#fff; border:2px solid #B4C9C3; border-radius:18px; padding:clamp(14px, 1.6vw, 26px) clamp(18px, 2vw, 32px); font-size:clamp(20px, 2.1vw, 36px); color:#7D909A; }
+  .finput .ph{ flex:1; }
+  .finput .unit{ background:#E3F6E5; color:#0F2537; border-radius:12px; padding:10px 24px; font-weight:700; }
+  .finput.ok{ border-color:var(--correct); background:#EAF9EF; color:#0F2537; font-weight:800; }
+  .letters{ display:flex; gap:clamp(6px, .8vw, 14px); justify-content:center; flex-wrap:wrap; }
+  .letters span{ width:clamp(40px, 4vw, 70px); height:clamp(50px, 4.8vw, 84px); border-radius:12px; background:#E8E9FD; border:2px solid #C6C8F1; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(22px, 2.2vw, 38px); color:#272B6A; }
+  .bboxes{ display:flex; gap:clamp(14px, 2vw, 36px); justify-content:center; flex-wrap:wrap; }
+  .bbox{ display:flex; align-items:flex-end; gap:14px; background:#E3F6E5; border:2px solid #B5D3C2; border-radius:16px; padding:clamp(14px, 1.6vw, 26px) clamp(16px, 2vw, 32px); font-weight:800; font-size:clamp(20px, 2.4vw, 42px); min-width:16vw; }
+  .bbox .bl{ flex:1; min-width:110px; height:.9em; border-bottom:3px solid #8DB4A9; }
+  .bbox .bw{ color:var(--correct); }
+  .bbox .bs{ font-size:.5em; color:#2B7A63; font-weight:700; align-self:center; }
+  .slider{ padding:10px clamp(20px, 3vw, 60px) 0; }
+  .strack{ position:relative; height:14px; border-radius:7px; background:#D3DCD9; margin:26px 0 14px; }
+  .strack .sf{ position:absolute; inset:0 auto 0 0; border-radius:7px; background:#69C98A; }
+  .strack .knob{ position:absolute; top:50%; width:52px; height:52px; border-radius:50%; background:#fff; border:5px solid #43A874; transform:translate(-50%, -50%); }
+  .strack .knob.ok{ background:var(--correct); border-color:#fff; box-shadow:0 0 0 4px var(--correct); }
+  .strack .knob .kl{ position:absolute; bottom:120%; left:50%; transform:translateX(-50%); background:var(--correct); color:#fff; font-weight:800; font-size:22px; padding:6px 14px; border-radius:10px; white-space:nowrap; }
+  .strack .dot{ position:absolute; top:50%; width:12px; height:12px; border-radius:50%; background:#0F2537; opacity:.35; transform:translate(-50%, -50%); }
+  .slabels{ display:flex; justify-content:space-between; font-weight:800; font-size:clamp(18px, 1.7vw, 28px); }
+  .match{ display:grid; grid-template-columns:1fr minmax(30px, 22%) 1fr; gap:12px 0; align-items:center; }
+  .match .ml, .match .mr{ border-radius:14px; padding:clamp(8px, .9vw, 14px) 18px; font-weight:600; font-size:clamp(16px, 1.6vw, 28px); text-align:center; }
+  .match .ml{ background:#DDF1DC; border:2px solid #B5D3C2; }
+  .match .mr{ background:#fff; border:2px solid #D2E2DD; }
+  .match .mid{ display:flex; align-items:center; justify-content:space-between; padding:0 10px; color:#2B7A63; font-weight:700; }
+  .match .mid i{ width:16px; height:16px; border-radius:50%; background:#21A67A; }
+  .match .mid .ln{ flex:1; height:3px; background:#21A67A; margin:0 6px; }
+  .match .mid .pct{ position:absolute; }
+  .bignum{ text-align:center; font-weight:800; font-size:clamp(40px, 5vw, 86px); color:var(--correct); line-height:1; }
+  .pstat{ text-align:center; font-weight:700; font-size:clamp(16px, 1.5vw, 24px); color:#2B7A63; }
+
+  .round-top{ display:flex; gap:12px; flex-wrap:wrap; }
+  .round-top:empty{ display:none; }
   .rt{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:10px 16px; display:flex; gap:10px; align-items:baseline; font-size:18px; }
   .rt .p{ color:var(--accent); font-weight:800; }
   .rt .s{ color:var(--muted); font-size:14px; }
-  .nobody{ text-align:center; color:var(--muted); font-size:20px; }
+  .nobody{ color:var(--muted); font-size:20px; }
 
   /* ---- LEADERBOARD ---- */
   #vBoard{ flex-direction:column; gap:16px; align-items:center; }
@@ -177,28 +219,20 @@
     </div>
   </section>
 
-  <!-- QUESTION -->
+  <!-- QUESTION + REVEAL -->
   <section class="view" id="vQuestion">
-    <div class="q-top"><div class="q-progress" id="qProg"></div><div class="q-progress" id="qPts"></div></div>
-    <div class="q-text" id="qText"></div>
-    <div class="q-mid">
+    <div class="qs-prog"><div class="pbar"><i id="pbarFill"></i></div><div class="qs-num" id="qProg"></div></div>
+    <div class="qs-row">
+      <div class="badge" id="qBadge"></div><div class="sp"></div>
+      <div class="ans-info" id="ansInfo"></div>
       <div class="timer" id="timer">
         <svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44" fill="none" stroke-width="10"/><circle class="bar" id="timerBar" cx="50" cy="50" r="44" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="0"/></svg>
         <div class="num" id="timerNum">20</div>
       </div>
-      <div class="qimg-wrap" id="qImgWrap"><img id="qImg" alt=""></div>
-      <div class="answered"><div class="big" id="ansCount">0</div><div class="lbl" id="tAnswers">odpowiedzi</div></div>
     </div>
-    <div class="opts" id="qOpts"></div>
-  </section>
-
-  <!-- REVEAL -->
-  <section class="view" id="vReveal">
-    <div class="q-top"><div class="q-progress" id="rProg"></div></div>
-    <div class="q-text" id="rText"></div>
+    <div class="q-text" id="qText"></div>
     <div class="round-top" id="roundTop"></div>
-    <div class="r-mid"><div class="qimg-wrap" id="rImgWrap"><img id="rImg" alt=""></div></div>
-    <div class="opts" id="rOpts"></div>
+    <div class="panel" id="qPanel"></div>
   </section>
 
   <!-- LEADERBOARD -->
@@ -286,65 +320,23 @@
     del(k){ try{ localStorage.removeItem(k); }catch(e){} }
   };
 
-  /* ---------- PYTANIA ---------- */
-  // Akceptujemy zdjęcia jako plik z repo (np. foto.jpg), link https lub obraz wgrany w edytorze (data:image)
-  function safeSrc(src){
-    src = String(src || '').trim();
-    if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i.test(src)) return src;
-    if (/^https?:\/\/[^\s"'<>]+$/i.test(src)) return src;
-    if (/^[\w\-./%]+\.(png|jpe?g|gif|webp|svg)$/i.test(src) && !src.includes('..')) return src;
-    return null;
+  /* ---------- PYTANIA ----------
+     Źródło: pytania z edytora (serwer) → questionsList z config.js → stary tekst z config.js */
+  const QC = window.QuizCore;
+  let serverList = null;
+  function sourceItems(){
+    if (serverList) return serverList.map(QC.normalizeItem).filter(q => q.ok !== false && !QC.problems(q).length);
+    if (Array.isArray(CFG.questionsList) && CFG.questionsList.length) return CFG.questionsList.map(QC.normalizeItem).filter(q => !QC.problems(q).length);
+    return QC.parseText(CFG.questions || '', SC).map(QC.normalizeItem).filter(q => !QC.problems(q).length);
   }
-  function parseQuestions(text){
-    const out = [];
-    text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).forEach(block => {
-      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 3) return;
-      let prompt = lines[0], limit = SC.timeLimitSec;
-      const m = prompt.match(/\[(\d+)\s*s?\]\s*$/i);
-      if (m){ limit = Math.max(5, parseInt(m[1], 10)); prompt = prompt.slice(0, m.index).trim(); }
-      // opcjonalne zdjęcie pytania: druga linia „[zdjęcie] adres”
-      let image = null, rest = lines.slice(1);
-      if (rest.length && /^\[zdj[eę]cie\]/i.test(rest[0])){ image = safeSrc(rest[0].replace(/^\[zdj[eę]cie\]\s*/i, '')); rest = rest.slice(1); }
-      const options = [], optionImages = []; let correctIndex = -1;
-      rest.slice(0, 6).forEach(l => {
-        if (l.startsWith('*')){ correctIndex = options.length; l = l.slice(1).trim(); }
-        // opcjonalne zdjęcie odpowiedzi: „tekst [img] adres” albo samo „[img] adres”
-        let txt = l, img = null;
-        const k = l.indexOf('[img]');
-        if (k >= 0){ txt = l.slice(0, k).trim(); img = safeSrc(l.slice(k + 5).trim()); }
-        options.push(txt); optionImages.push(img);
-      });
-      if (correctIndex < 0 || options.length < 2) return;
-      out.push({ prompt, image, options, optionImages, correctIndex, limit });
-    });
-    return out;
-  }
-  // Pytania: wersja z edytora (edytor.html, ta sama przeglądarka) albo z config.js
-  // Pytania z edytora są na serwerze (quiz/<pokój>/questions); bez nich — wersja z config.js
-  let serverQText = null;
-  const toArrQ = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
-  function listToText(list){
-    return toArrQ(list).filter(q => q && q.ok).map(q => {
-      const lines = [String(q.prompt || '').replace(/\s+/g, ' ').trim() + (q.limit && q.limit !== SC.timeLimitSec ? ' [' + q.limit + 's]' : '')];
-      if (q.image) lines.push('[zdjęcie] ' + q.image);
-      const imgs = toArrQ(q.images);
-      toArrQ(q.answers).forEach((a, i) => {
-        const txt = String(a || '').replace(/\s+/g, ' ').trim().replace(/^\*+/, '').replace(/\[img\]/g, '');
-        const img = imgs[i];
-        lines.push((i === q.correct ? '*' : '') + (img ? (txt ? txt + ' ' : '') + '[img] ' + img : txt));
-      });
-      return lines.join('\n');
-    }).join('\n\n');
-  }
-  const getQText = () => serverQText != null ? serverQText : (CFG.questions || '');
+  const getQuestions = () => sourceItems().map((it, i) => QC.buildQuestion(it, SC, i * 13 + 7));
   function updateQCount(){
-    const n = parseQuestions(getQText()).length;
-    $('qCount').textContent = (lang === 'pl' ? 'Pytań w quizie: ' : 'Questions in quiz: ') + n + (serverQText != null ? (lang === 'pl' ? ' (z edytora)' : ' (from editor)') : '');
+    const n = getQuestions().length;
+    $('qCount').textContent = (lang === 'pl' ? 'Pytań w quizie: ' : 'Questions in quiz: ') + n + (serverList ? (lang === 'pl' ? ' (z edytora)' : ' (from editor)') : '');
   }
   function onQuestionsChanged(){
     // w trakcie pytania / odpowiedzi nie podmieniamy listy — nowe pytania wejdą od następnego
-    if (state !== 'question' && state !== 'reveal' && state !== 'lobby') questions = parseQuestions(getQText());
+    if (state !== 'question' && state !== 'reveal' && state !== 'lobby') questions = getQuestions();
     updateQCount(); updateControls();
   }
 
@@ -416,7 +408,7 @@
       });
       players.forEach((p, pid) => { if (!d[pid]) p.online = false; });
       renderPlayers(); updateControls();
-      if (state === 'question') checkAllAnswered();
+      if (state === 'question'){ renderAnsInfo(); checkAllAnswered(); }
     }, dbErr);
   }
   function stateBase(phase){ return { phase, lang, qTotal:questions.length, at:serverNow() }; }
@@ -436,16 +428,17 @@
     // czas wg serwera (moment zapisu odpowiedzi) — chroni przed spóźnionymi odpowiedziami
     const srvMs = (Number(data.at) || serverNow()) - round.startAt;
     if (srvMs > round.limitMs + 2000) return;
-    const idx = parseInt(data.index, 10);
     const q = questions[round.qi];
-    if (!(idx >= 0 && idx < q.options.length)) return;
+    const g = QC.grade(q, data.v !== undefined ? data.v : data.index, lang);
+    if (!g.valid) return;
     // czas z telefonu (sprawiedliwy mimo opóźnień sieci), ale nie dłuższy niż wg serwera
     let ms = Number(data.elapsedMs);
     if (!isFinite(ms) || ms < 0) ms = srvMs;
     ms = Math.max(0, Math.min(ms, Math.max(srvMs, 0), round.limitMs));
-    const correct = idx === q.correctIndex;
-    round.answers.set(pid, { index:idx, ms, correct, points: correct ? pointsFor(ms, round.limitMs) : SC.wrongPoints });
-    $('ansCount').textContent = round.answers.size;
+    // punkty: odpowiedzi „kto najbliżej” liczone przy odsłonięciu, pozostałe od razu (część poprawności × premia za czas)
+    const points = q.type === 'number' ? 0 : (g.fraction > 0 ? Math.round(g.fraction * pointsFor(ms, round.limitMs)) : SC.wrongPoints);
+    round.answers.set(pid, { g, ms, correct: g.fraction >= 0.999, points });
+    renderAnsInfo();
     checkAllAnswered();
   }
   function checkAllAnswered(){
@@ -472,38 +465,99 @@
           return '<div class="chip' + (isNew ? ' new' : '') + (p.online ? '' : ' off') + '">' + esc(p.name) + '</div>'; }).join('')
       : '<div class="empty">' + t('noPlayers') + '</div>';
   }
-  function optsHtml(q, counts, total){
-    return q.options.map((o, i) => {
-      const c = counts ? counts[i] || 0 : null;
-      const w = counts && total ? Math.round(c / total * 100) : 0;
-      const img = q.optionImages && q.optionImages[i];
-      return '<div class="opt opt' + i + (img ? ' has-img' : '') + (img && !o ? ' img-only' : '') + (counts ? (i === q.correctIndex ? ' ok' : ' dim') : '') + '">' +
-        (counts ? '<div class="fill" data-w="' + w + '"></div>' : '') +
-        '<div class="L"><span>' + LETTERS[i] + '</span></div>' +
-        (img ? '<img class="oimg" src="' + esc(img) + '" alt="">' : '') +
-        '<div class="T">' + esc(o) + '</div>' +
-        (counts ? '<div class="cnt">' + c + '</div>' : '') + '</div>';
-    }).join('');
+  /* ---------- PANEL Z ODPOWIEDZIAMI (pytanie i odsłonięcie) ---------- */
+  const L = 'ABCDEF';
+  const isTF = q => q.type === 'choice' && q.options.length === 2 && ['prawda','true'].includes(QC.norm(q.options[0])) && ['falsz','false'].includes(QC.norm(q.options[1]));
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  function tilesHtml(q, R){
+    const n = q.options.length, cls = n > 4 || (n === 3) ? ' c3' : n === 2 ? '' : '';
+    const tf = isTF(q), total = R ? R.total : 0;
+    return '<div class="tiles' + cls + (q.image && q.prompt ? ' c1' : '') + '">' + q.options.map((o, i) => {
+      const ok = q.correctSet.includes(i), c = R ? R.counts[i] || 0 : 0;
+      const mark = q.type === 'multi' ? (R && ok ? '<div class="mk box">✓</div>' : '<div class="mk box"></div>')
+        : '<div class="mk">' + (tf ? (i === 0 ? '✓' : '✕') : (R && ok ? '✓' : L[i])) + '</div>';
+      const img = q.optionImages[i];
+      return '<div class="tile' + (R ? (ok ? ' ok' : ' dim') : '') + '">' + (R ? '<div class="fill" data-w="' + pct(c, total) + '"></div>' : '') +
+        mark + (img ? '<img class="oimg" src="' + esc(img) + '" alt="">' : '') + '<div class="tt">' + esc(o) + '</div>' +
+        (R ? '<div class="cnt">' + c + '</div>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  function panelBody(q, R){
+    const T = lang === 'pl';
+    if (q.type === 'choice' || q.type === 'multi') return tilesHtml(q, R);
+    if (q.type === 'text'){
+      const letters = q.letters ? '<div class="letters">' + q.letters.map(c => '<span>' + esc(c) + '</span>').join('') + '</div>' : '';
+      if (!R) return letters + '<div class="finput"><span class="ph">' + esc(q.placeholder) + '</span></div>';
+      return letters + '<div class="finput ok"><span class="ph">✓ ' + esc(q.answerText) + '</span></div>' +
+        '<div class="pstat">' + (T ? 'Poprawnie: ' : 'Correct: ') + R.ok + ' / ' + R.total + '</div>';
+    }
+    if (q.type === 'blanks'){
+      return '<div class="bboxes">' + q.lines.map(line => '<div class="bbox">' + line.map(p => {
+        if (p.t != null) return '<span>' + esc(p.t.replace(/\s*[–—-]\s*$/, '')) + '</span>';
+        if (!R) return '<span class="bl"></span>';
+        return '<span class="bw">' + esc(QC.acceptedList(q.blanks[p.b])[0]) + '</span><span class="bs">' + pct(R.blankOk[p.b], R.total) + '%</span>';
+      }).join('') + '</div>').join('') + '</div>';
+    }
+    if (q.type === 'number'){
+      if (q.slider){
+        const pos = v => Math.max(0, Math.min(100, (v - q.min) / (q.max - q.min) * 100));
+        const knobAt = R ? pos(q.value) : 33;
+        return (R ? '' : '<div class="phint top">' + (T ? 'Wybierz wartość na suwaku' : 'Pick a value on the slider') + '</div>') + '<div class="slider"><div class="strack">' +
+          '<div class="sf" style="width:' + knobAt + '%"></div>' +
+          (R ? R.values.map(v => '<div class="dot" style="left:' + pos(v) + '%"></div>').join('') : '') +
+          '<div class="knob' + (R ? ' ok' : '') + '" style="left:' + knobAt + '%">' + (R ? '<div class="kl">' + esc(QC.correctText(q, lang)) + '</div>' : '') + '</div></div>' +
+          '<div class="slabels"><span>' + esc(QC.fmtNum(q.min, lang) + (q.unit ? q.unit.replace(/^%$/, '%') : '')) + '</span><span>' + esc(QC.fmtNum(q.max, lang) + (q.unit || '')) + '</span></div></div>' +
+          (R ? '<div class="pstat">' + (T ? 'Średnia odpowiedzi: ' : 'Average answer: ') + esc(R.avg) + '</div>' : '');
+      }
+      if (!R) return '<div class="finput"><span class="ph">' + esc(q.placeholder) + '</span>' + (q.unit ? '<span class="unit">' + esc(q.unit) + '</span>' : '') + '</div>' +
+        '<div class="phint">' + (T ? 'Wygrywa odpowiedź najbliższa prawidłowej wartości' : 'The closest answer wins') + '</div>';
+      return '<div class="bignum">' + esc(QC.correctText(q, lang)) + '</div>' +
+        '<div class="pstat">' + (R.total ? (T ? 'Średnia odpowiedzi: ' : 'Average answer: ') + esc(R.avg) : '') + '</div>';
+    }
+    if (q.type === 'match'){
+      const rights = q.order.map(i => q.rights[i]);
+      if (!R) return '<div class="match">' + q.lefts.map((l, i) => '<div class="ml">' + esc(l) + '</div><div class="mid"><i></i><i></i></div><div class="mr">' + esc(rights[i]) + '</div>').join('') + '</div>' +
+        '<div class="phint">' + (T ? 'Połącz pary na telefonie' : 'Match the pairs on your phone') + '</div>';
+      return '<div class="match">' + q.lefts.map((l, i) => '<div class="ml">' + esc(l) + '</div><div class="mid"><i></i><span class="ln"></span><i></i></div><div class="mr" style="border-color:var(--correct);background:#EAF9EF">' + esc(q.rights[i]) +
+        ' <small style="color:#2B7A63">' + pct(R.pairOk[i], R.total) + '%</small></div>').join('') + '</div>';
+    }
+    return '';
+  }
+  function renderStage(q, qi, R){
+    $('qProg').textContent = t('question') + ' ' + String(qi + 1).padStart(2, '0') + ' / ' + questions.length;
+    $('pbarFill').style.width = ((qi + 1) / questions.length * 100) + '%';
+    $('qBadge').textContent = q.label || '';
+    $('qText').textContent = q.prompt || '';
+    const panel = $('qPanel');
+    const photoOnly = q.image && !q.prompt.trim();
+    if (photoOnly && !R){
+      panel.className = 'photo'; panel.innerHTML = '<img src="' + esc(q.image) + '" alt="">';
+    } else if (q.image){
+      panel.className = 'panel split';
+      panel.innerHTML = '<img class="pimg" src="' + esc(q.image) + '" alt=""><div class="pbody">' + panelBody(q, R) + '</div>';
+    } else {
+      panel.className = 'panel'; panel.innerHTML = panelBody(q, R);
+    }
+    if (R) requestAnimationFrame(() => requestAnimationFrame(() => panel.querySelectorAll('.fill').forEach(f => f.style.width = f.dataset.w + '%')));
+  }
+  function renderAnsInfo(){
+    if (!round) return;
+    const online = Array.from(players.values()).filter(p => p.online && p.name).length;
+    $('ansInfo').textContent = round.answers.size + ' / ' + online + ' ' + t('answers');
   }
 
-  function setImg(imgId, wrapId, src){
-    $(wrapId).classList.toggle('on', !!src);
-    if (src) $(imgId).src = src; else $(imgId).removeAttribute('src');
-  }
   function startQuestion(){
     const q = questions[qIndex];
     round = { qi:qIndex, startAt:serverNow() + 400, limitMs:q.limit * 1000, answers:new Map() };
     state = 'question';
-    $('qProg').textContent = t('question') + ' ' + (qIndex + 1) + ' / ' + questions.length;
-    $('qPts').textContent = SC.maxPoints + ' ' + t('pts');
-    $('qText').textContent = q.prompt;
-    $('qOpts').innerHTML = optsHtml(q);
-    setImg('qImg', 'qImgWrap', q.image);
-    $('ansCount').textContent = '0';
+    renderStage(q, qIndex, null);
+    $('roundTop').innerHTML = '';
+    $('timer').classList.remove('done');
+    renderAnsInfo();
     show('vQuestion');
     listenAnswers(round.qi);
-    write({ ['answers/' + round.qi]: null, state: Object.assign(stateBase('question'), { qid:round.qi, qIndex:round.qi, prompt:q.prompt,
-      image:q.image || null, options:q.options, optionImages:q.optionImages.map(x => x || ''), limitMs:round.limitMs, startAt:round.startAt }) });
+    write({ ['answers/' + round.qi]: null, state: Object.assign(stateBase('question'), QC.publicView(q),
+      { qid:round.qi, qIndex:round.qi, limitMs:round.limitMs, startAt:round.startAt }) });
     clearInterval(timerInt);
     tick(); timerInt = setInterval(tick, 200);
     updateControls();
@@ -523,6 +577,16 @@
     clearInterval(timerInt);
     state = 'reveal';
     const q = questions[round.qi];
+    const answers = Array.from(round.answers.entries());
+    // „kto najbliżej”: najbliżsi dostają pełne punkty, pozostali proporcjonalnie do bliskości
+    if (q.type === 'number' && answers.length){
+      const best = Math.min(...answers.map(([, a]) => a.g.err));
+      answers.forEach(([, a]) => {
+        a.closest = a.g.err <= best + 1e-9;
+        a.correct = a.closest;
+        a.points = a.closest ? SC.maxPoints : Math.round(SC.maxPoints * a.g.fraction);
+      });
+    }
     const before = ranked().map(p => p.pid);
     players.forEach(p => { p.prevRank = before.indexOf(p.pid); p.lastGain = 0; });
     round.answers.forEach((a, pid) => {
@@ -533,28 +597,41 @@
     qIndex = round.qi + 1;
     stopAnswers();
 
-    const counts = q.options.map(() => 0);
-    round.answers.forEach(a => counts[a.index]++);
-    $('rProg').textContent = t('question') + ' ' + (round.qi + 1) + ' / ' + questions.length;
-    $('rText').textContent = q.prompt;
-    $('rOpts').innerHTML = optsHtml(q, counts, round.answers.size);
-    setImg('rImg', 'rImgWrap', q.image);
-    requestAnimationFrame(() => requestAnimationFrame(() =>
-      document.querySelectorAll('#rOpts .fill').forEach(f => f.style.width = f.dataset.w + '%')));
+    // statystyki do panelu
+    const R = { total:answers.length, ok:answers.filter(([, a]) => a.correct).length };
+    if (q.type === 'choice' || q.type === 'multi'){
+      R.counts = q.options.map(() => 0);
+      answers.forEach(([, a]) => (q.type === 'multi' ? a.g.sel : [a.g.index]).forEach(i => R.counts[i]++));
+    }
+    if (q.type === 'blanks') R.blankOk = q.blanks.map((_, i) => answers.filter(([, a]) => a.g.okEach[i]).length);
+    if (q.type === 'match') R.pairOk = q.lefts.map((_, i) => answers.filter(([, a]) => a.g.okEach[i]).length);
+    if (q.type === 'number'){
+      R.values = answers.map(([, a]) => a.g.n);
+      R.avg = R.values.length ? QC.fmtNum(Math.round(R.values.reduce((s, v) => s + v, 0) / R.values.length * 100) / 100, lang) + (q.unit ? ' ' + q.unit : '') : '–';
+    }
+    renderStage(q, round.qi, R);
+    $('timer').classList.add('done');
+    $('ansInfo').textContent = '';
 
-    const fastest = Array.from(round.answers.entries()).filter(([, a]) => a.correct)
-      .sort((a, b) => a[1].ms - b[1].ms).slice(0, 3);
-    $('roundTop').innerHTML = fastest.length
-      ? fastest.map(([pid, a], i) => '<div class="rt">' + ['🥇','🥈','🥉'][i] + ' <b>' + esc((players.get(pid) || {}).name) + '</b><span class="p">+' + a.points + '</span><span class="s">' + fmtTime(a.ms) + '</span></div>').join('')
-      : '<div class="nobody">' + t('nobody') + '</div>';
-    show('vReveal');
-    if (fastest.length) confetti(1200, 70);
+    let top;
+    if (q.type === 'number'){
+      top = answers.slice().sort((a, b) => (a[1].g.err - b[1].g.err) || (a[1].ms - b[1].ms)).slice(0, 3);
+      $('roundTop').innerHTML = top.length ? top.map(([pid, a], i) => '<div class="rt">' + ['🥇','🥈','🥉'][i] + ' <b>' + esc((players.get(pid) || {}).name) + '</b><span class="s">' + esc(a.g.shown) + '</span><span class="p">+' + a.points + '</span></div>').join('')
+        : '<div class="nobody">' + t('nobody') + '</div>';
+    } else {
+      top = answers.filter(([, a]) => a.correct).sort((a, b) => a[1].ms - b[1].ms).slice(0, 3);
+      $('roundTop').innerHTML = top.length ? top.map(([pid, a], i) => '<div class="rt">' + ['🥇','🥈','🥉'][i] + ' <b>' + esc((players.get(pid) || {}).name) + '</b><span class="p">+' + a.points + '</span><span class="s">' + fmtTime(a.ms) + '</span></div>').join('')
+        : '<div class="nobody">' + t('nobody') + '</div>';
+    }
+    if (top.length) confetti(1200, 70);
 
-    const r = ranked(), u = {};
+    const r = ranked(), u = {}, ct = QC.correctText(q, lang);
     players.forEach(p => {
       const a = round.answers.get(p.pid);
-      u['results/' + p.pid] = { type:'result', qid:round.qi, correctIndex:q.correctIndex, answered: a ? a.index : -1,
-        correct: !!(a && a.correct), gained: a ? a.points : 0, ms: a ? Math.round(a.ms) : -1,
+      u['results/' + p.pid] = { type:'result', qid:round.qi, qtype:q.type,
+        correctIndex: q.type === 'choice' ? q.correctIndex : -1, answered: a && q.type === 'choice' ? a.g.index : (a ? 0 : -1),
+        correct: !!(a && a.correct), partial: a ? Math.round(a.g.fraction * 100) : 0, gained: a ? a.points : 0, ms: a ? Math.round(a.ms) : -1,
+        yours: a ? a.g.shown : '', correctText: ct,
         score: p.score, rank: r.findIndex(x => x.pid === p.pid) + 1, of: r.length };
     });
     u.state = Object.assign(stateBase('reveal'), { qid:round.qi, qIndex:round.qi });
@@ -597,7 +674,7 @@
 
   /* ---------- PRZYCISKI ---------- */
   function mainLabel(){
-    if (state === 'lobby') return (qIndex > 0 && qIndex < parseQuestions(getQText()).length) ? t('resume') + (qIndex + 1) : t('start');
+    if (state === 'lobby') return (qIndex > 0 && qIndex < getQuestions().length) ? t('resume') + (qIndex + 1) : t('start');
     if (state === 'question') return t('reveal');
     if (state === 'reveal') return t('board');
     if (state === 'board') return qIndex < questions.length ? t('next') : t('final');
@@ -620,18 +697,18 @@
   }
   function mainAction(){
     if (state === 'lobby'){
-      questions = parseQuestions(getQText());
+      questions = getQuestions();
       if (!questions.length){ alert(t('noQ')); return; }
       if (qIndex >= questions.length) qIndex = 0;
       $('restoreNote').textContent = '';
       startQuestion();
     } else if (state === 'question') reveal();
     else if (state === 'reveal') showBoard();
-    else if (state === 'board') { questions = parseQuestions(getQText()); if (qIndex < questions.length) startQuestion(); else showFinal(); }
+    else if (state === 'board') { questions = getQuestions(); if (qIndex < questions.length) startQuestion(); else showFinal(); }
     else if (state === 'final') showLobby();
   }
   $('btnMain').addEventListener('click', mainAction);
-  $('btnBoard').addEventListener('click', () => { renderBoard(); state = 'board'; show('vBoard'); questions = parseQuestions(getQText()); updateControls(); });
+  $('btnBoard').addEventListener('click', () => { renderBoard(); state = 'board'; show('vBoard'); questions = getQuestions(); updateControls(); });
   // Edytor otwiera się w osobnym oknie, żeby publiczność na projektorze nie widziała odpowiedzi
   $('btnEditor').addEventListener('click', () => {
     const url = 'edytor.html?room=' + encodeURIComponent(ROOM);
@@ -656,7 +733,7 @@
   $('btnAbort').addEventListener('click', abortQuiz);
   $('btnFinishNow').addEventListener('click', () => {
     if (!confirm(t('confirmFinish'))) return;
-    if (!questions.length) questions = parseQuestions(getQText());
+    if (!questions.length) questions = getQuestions();
     showFinal();
   });
   $('btnCsv').addEventListener('click', () => {
@@ -680,7 +757,7 @@
   function renderTexts(){
     $('btnLang').textContent = lang === 'pl' ? 'EN' : 'PL';
     $('tJoin').textContent = t('join'); $('tJoinSub').textContent = t('joinSub');
-    $('tPlayers').textContent = t('playersH'); $('tAnswers').textContent = t('answers');
+    $('tPlayers').textContent = t('playersH');
     updateQCount(); $('tKbd').textContent = t('kbd');
     $('tBoard').textContent = t('boardT'); $('tFinal').textContent = t('finalT');
     renderPlayers(); updateControls();
@@ -725,7 +802,7 @@
     showConn('wait');
     room.child('questions').on('value', s => {
       const v = s.val();
-      serverQText = v && v.list ? listToText(v.list) : null;
+      serverList = v && v.list ? QC.toArr(v.list) : null;
       onQuestionsChanged();
     }, dbErr);
     loadScores().then(() => { listenPlayers(); showLobby(); });

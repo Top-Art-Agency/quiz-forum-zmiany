@@ -23,6 +23,19 @@ Działa jako statyczna strona na GitHub Pages — bez serwera i bez bazy danych.
 4. Po 1–2 minutach ekran quizu będzie pod adresem:
    `https://top-art-agency.github.io/quiz-forum-zmiany/`
 
+## Typy pytań
+
+| Typ (w edytorze) | Na telefonie | Punkty |
+|---|---|---|
+| ABCD / Prawda-Fałsz | jedna odpowiedź | 1000→500 pkt zależnie od czasu |
+| Wielokrotny wybór | zaznacz kilka + WYŚLIJ | część punktów za częściowo dobre (złe zaznaczenia odejmują) |
+| Odpowiedź wpisywana / rozsypanka | pole tekstowe | jak ABCD; wielkość liter, polskie znaki i drobne literówki nie mają znaczenia |
+| Uzupełnij luki (`[[odpowiedź]]`) | pole na każdą lukę | proporcjonalnie do trafionych luk |
+| Liczba / rok / suwak – kto najbliżej | liczba albo suwak | najbliżsi 1000 pkt, reszta proporcjonalnie do bliskości |
+| Dopasuj pary | lista wyboru przy każdym pojęciu | proporcjonalnie do trafionych par |
+
+Pytanie bez treści, ale ze zdjęciem = na ekranie samo zdjęcie (np. „rozpoznaj ze zdjęcia”). Plakietkę nad pytaniem (np. „PODAJ ROK”) można zmienić w edytorze.
+
 ## Punktacja
 
 - Każdy gracz odpowiada **raz** na każde pytanie, w limicie czasu (domyślnie 20 s, przy długich pytaniach 30 s).

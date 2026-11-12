@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0E1020">
 <title>Gracz</title>
-<script src="config.js?v=6"></script>
-<script src="brand.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="brand.js?v=7"></script>
 <style>
   :root{
     --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531;
@@ -55,6 +55,38 @@
   .opt{ border:none; border-radius:16px; color:#fff; font:700 16px var(--font-body); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px 10px; cursor:pointer; text-align:center; min-height:90px; transition:transform .1s, opacity .2s; overflow-wrap:anywhere; }
   .opt:active{ transform:scale(.96); }
   .opt .L{ width:38px; height:38px; border-radius:10px; background:rgba(255,255,255,.22); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+  .pbadge{ align-self:flex-start; background:var(--accent); color:#06223F; font-weight:800; font-size:12px; letter-spacing:.3px; border-radius:999px; padding:6px 14px; margin-bottom:10px; text-transform:uppercase; }
+  .pbadge:empty{ display:none; }
+  .form{ display:flex; flex-direction:column; gap:12px; flex:1; }
+  .form .opts{ flex:0 0 auto; grid-auto-rows:auto; }
+  .opts.multi .opt{ min-height:70px; }
+  .opts.multi .opt.on{ outline:4px solid #fff; outline-offset:-4px; }
+  .opts.multi .opt .L::after{ content:''; }
+  .opts.multi .opt.on .L::after{ content:'✓'; }
+  .tin{ width:100%; font:700 18px var(--font-body); background:#fff; color:#0F2537; border:2px solid var(--line); border-radius:14px; padding:15px 16px; outline:none; }
+  .tin:focus{ border-color:var(--primary); }
+  .letters{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+  .letters span{ width:34px; height:40px; border-radius:8px; background:#E8E9FD; color:#272B6A; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; }
+  .bline{ display:flex; align-items:center; gap:10px; background:var(--surface); border-radius:14px; padding:8px 12px; }
+  .bline .bt{ font-weight:800; font-size:20px; white-space:nowrap; }
+  .bline .bin{ flex:1; padding:12px; }
+  .nwrap{ display:flex; gap:8px; align-items:stretch; }
+  .nwrap .unit{ display:flex; align-items:center; white-space:nowrap; background:var(--surface); border-radius:14px; padding:0 16px; font-weight:800; }
+  .sval{ text-align:center; font-weight:800; font-size:44px; color:var(--accent); }
+  .rng{ width:100%; height:44px; accent-color:var(--primary); }
+  .slab{ display:flex; justify-content:space-between; color:var(--muted); font-weight:700; }
+  .mrow{ display:flex; flex-direction:column; gap:6px; background:var(--surface); border-radius:14px; padding:10px 12px; }
+  .mlab{ font-weight:800; }
+  .msel{ width:100%; font:600 16px var(--font-body); padding:12px; border-radius:10px; border:2px solid var(--line); background:#fff; color:#0F2537; }
+  .fhint{ text-align:center; color:var(--muted); font-size:14px; }
+  .btn.send{ max-width:none; margin-top:auto; }
+  .btn.send.shake{ animation:shake .35s; }
+  @keyframes shake{ 25%{ transform:translateX(-6px); } 75%{ transform:translateX(6px); } }
+  .form.locked .tin, .form.locked .msel, .form.locked .opt, .form.locked .rng{ opacity:.5; }
+  .form.locked .btn.send{ display:none; }
+  .sent{ text-align:center; font-weight:800; color:var(--correct); font-size:17px; padding:10px; }
+  .yours{ background:var(--surface); border-radius:12px; padding:10px 14px; font-size:14px; max-width:340px; }
+  .yours[hidden]{ display:none; }
   .q-img{ display:block; max-width:100%; max-height:24vh; object-fit:contain; border-radius:12px; margin:0 auto 12px; }
   .q-img[hidden]{ display:none; }
   .opt .oimg{ width:100%; max-height:14vh; flex:1 1 auto; min-height:0; object-fit:contain; border-radius:10px; }
@@ -111,6 +143,7 @@
   <section class="view" id="vQuestion">
     <div class="q-meta"><span id="qProg"></span><span id="qSec"></span></div>
     <div class="bar"><i id="qBar"></i></div>
+    <div class="pbadge" id="qBadge"></div>
     <div class="q-text" id="qText"></div>
     <img id="qImg" class="q-img" alt="" hidden>
     <div class="opts" id="qOpts"></div>
@@ -127,6 +160,7 @@
         <div class="stat"><div class="v" id="rRank">–</div><div class="k" id="tRank">miejsce</div></div>
         <div class="stat"><div class="v" id="rScore">0</div><div class="k" id="tTotal">razem</div></div>
       </div>
+      <div class="yours" id="rYours" hidden></div>
       <div class="correct-was" id="rCorrect" hidden></div>
     </div>
   </section>
@@ -156,14 +190,18 @@
       question:'PYTANIE', sent:'Odpowiedź wysłana!', sentSub:'Czekaj na wynik…', ok:'Dobrze!', bad:'Niestety…', none:'Koniec czasu!',
       time:'czas', rank:'miejsce', total:'razem', correctWas:'Poprawna odpowiedź: ', pts:'pkt',
       finalT:r=>r===1?'Wygrywasz! 🎉':'Zajmujesz '+r+'. miejsce', finalS:(of,t)=>'na '+of+' graczy · łączny czas poprawnych odpowiedzi: '+t,
-      noRank:'Dziękujemy za grę!' },
+      noRank:'Dziękujemy za grę!', send:'WYŚLIJ ODPOWIEDŹ', sent:'Odpowiedź wysłana — czekaj na wynik', typeHere:'Wpisz odpowiedź…', typeNum:'Wpisz liczbę…',
+      closest:'Wygrywa odpowiedź najbliższa prawidłowej wartości', multiHint:'Zaznacz wszystkie poprawne odpowiedzi', pick:'wybierz…',
+      yours:'Twoja odpowiedź: ', partial:'Częściowo dobrze', nearly:'Blisko!' },
     en:{ connecting:'Connecting to screen…', connected:'Connected', reconnecting:'Reconnecting…', noCode:'No code in the link — scan the QR again',
       hello:'Hi! What’s your name?', helloSub:'Your name will appear on the leaderboard.', placeholder:'Your name', join:'JOIN',
       waitT:'You’re in!', waitS:'Watch the screen — the first question is coming.', waitNext:'Watch the screen — next question soon.',
       question:'QUESTION', sent:'Answer sent!', sentSub:'Wait for the result…', ok:'Correct!', bad:'Not quite…', none:'Time’s up!',
       time:'time', rank:'place', total:'total', correctWas:'Correct answer: ', pts:'pts',
       finalT:r=>r===1?'You win! 🎉':'You finished #'+r, finalS:(of,t)=>'out of '+of+' players · total time of correct answers: '+t,
-      noRank:'Thanks for playing!' }
+      noRank:'Thanks for playing!', send:'SEND ANSWER', sent:'Answer sent — wait for the result', typeHere:'Type your answer…', typeNum:'Type a number…',
+      closest:'The closest answer wins', multiHint:'Select all correct answers', pick:'choose…',
+      yours:'Your answer: ', partial:'Partly right', nearly:'Close!' }
   };
   let lang = CFG.defaultLang === 'en' ? 'en' : 'pl';
   const t = k => STR[lang][k];
@@ -210,24 +248,99 @@
   /* ---------- pytanie ---------- */
   function showQuestion(d){
     mood(); lastScreen = 'question'; lastQuestion = d;
-    current = { qid:d.qid, options:d.options, recvAt:performance.now(), remainingMs:d.remainingMs, limitMs:d.limitMs, startAt:d.startAt };
+    current = { qid:d.qid, type:d.type || 'choice', options:d.options, recvAt:performance.now(), remainingMs:d.remainingMs, limitMs:d.limitMs, startAt:d.startAt };
     $('qProg').textContent = t('question') + ' ' + (d.qIndex + 1) + ' / ' + d.qTotal;
-    $('qText').textContent = d.prompt;
+    $('qBadge').textContent = d.label || '';
+    $('qText').textContent = d.prompt || '';
     if (d.image){ $('qImg').src = d.image; $('qImg').hidden = false; } else { $('qImg').hidden = true; $('qImg').removeAttribute('src'); }
     const box = $('qOpts');
-    box.className = 'opts' + (d.options.length === 2 ? ' n2' : '');
-    box.innerHTML = '';
-    d.options.forEach((o, i) => {
-      const b = document.createElement('button');
-      b.className = 'opt opt' + i;
-      b.innerHTML = '<span class="L">' + LETTERS[i] + '</span>';
-      const img = d.optionImages && d.optionImages[i];
-      if (img){ const im = document.createElement('img'); im.className = 'oimg'; im.src = img; im.alt = ''; b.appendChild(im); b.classList.add('has-img'); }
-      if (o){ const s = document.createElement('span'); s.textContent = o; b.appendChild(s); }
-      b.addEventListener('click', () => answer(i, b));
-      box.appendChild(b);
-    });
-    if (d.answered != null){ box.classList.add('locked'); const m = box.children[d.answered]; if (m) m.classList.add('mine'); }
+    box.innerHTML = ''; box.className = 'opts';
+    const type = current.type;
+    const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+    const sendBtn = () => { const b = el('button', 'btn send', t('send')); return b; };
+
+    if (type === 'choice'){
+      const opts = toArr(d.options), imgs = toArr(d.optionImages);
+      box.className = 'opts' + (opts.length === 2 ? ' n2' : '');
+      opts.forEach((o, i) => {
+        const b = el('button', 'opt opt' + i);
+        b.appendChild(el('span', 'L', LETTERS[i]));
+        if (imgs[i]){ const im = el('img', 'oimg'); im.src = imgs[i]; im.alt = ''; b.appendChild(im); b.classList.add('has-img'); }
+        if (o) b.appendChild(el('span', '', o));
+        b.addEventListener('click', () => { if (submit(i)){ box.classList.add('locked'); b.classList.add('mine'); } });
+        box.appendChild(b);
+      });
+      if (d.answered != null && typeof d.answered === 'number'){ box.classList.add('locked'); const m = box.children[d.answered]; if (m) m.classList.add('mine'); }
+    } else {
+      box.className = 'form';
+      const send = sendBtn();
+      let collect = () => null;
+      if (type === 'multi'){
+        const opts = toArr(d.options), imgs = toArr(d.optionImages), sel = new Set();
+        const grid = el('div', 'opts multi');
+        opts.forEach((o, i) => {
+          const b = el('button', 'opt opt' + i);
+          b.appendChild(el('span', 'L', '')); if (imgs[i]){ const im = el('img', 'oimg'); im.src = imgs[i]; b.appendChild(im); b.classList.add('has-img'); }
+          if (o) b.appendChild(el('span', '', o));
+          b.addEventListener('click', () => { if (sel.has(i)){ sel.delete(i); b.classList.remove('on'); } else { sel.add(i); b.classList.add('on'); } });
+          grid.appendChild(b);
+        });
+        box.appendChild(el('div', 'fhint', t('multiHint'))); box.appendChild(grid);
+        collect = () => sel.size ? Array.from(sel) : null;
+      } else if (type === 'text'){
+        if (d.letters){ const lw = el('div', 'letters'); toArr(d.letters).forEach(c => lw.appendChild(el('span', '', c))); box.appendChild(lw); }
+        const inp = el('input', 'tin'); inp.placeholder = d.placeholder || t('typeHere'); inp.maxLength = 80; inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off'); inp.enterKeyHint = 'send';
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') send.click(); });
+        box.appendChild(inp);
+        collect = () => inp.value.trim() || null;
+      } else if (type === 'blanks'){
+        const inputs = [];
+        toArr(d.lines).forEach(line => {
+          const row = el('div', 'bline');
+          toArr(line).forEach(p => {
+            if (p.t != null) row.appendChild(el('span', 'bt', String(p.t).replace(/\s*[–—-]\s*$/, '')));
+            else { const inp = el('input', 'tin bin'); inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off'); inputs[p.b] = inp; row.appendChild(inp); }
+          });
+          box.appendChild(row);
+        });
+        collect = () => inputs.some(i => i && i.value.trim()) ? inputs.map(i => i ? i.value.trim() : '') : null;
+      } else if (type === 'number'){
+        const unit = d.unit || '';
+        if (d.slider){
+          const min = Number(d.min), max = Number(d.max), step = Number(d.step) || 1;
+          const val = el('div', 'sval'); const rng = el('input', 'rng'); rng.type = 'range'; rng.min = min; rng.max = max; rng.step = step;
+          rng.value = Math.round(((min + max) / 2) / step) * step;
+          const upd = () => { val.textContent = fmtN(Number(rng.value)) + (unit ? ' ' + unit : ''); };
+          rng.addEventListener('input', upd); upd();
+          box.appendChild(val); box.appendChild(rng);
+          const lab = el('div', 'slab'); lab.appendChild(el('span', '', fmtN(min) + unit)); lab.appendChild(el('span', '', fmtN(max) + unit)); box.appendChild(lab);
+          collect = () => Number(rng.value);
+        } else {
+          const wrap = el('div', 'nwrap');
+          const inp = el('input', 'tin num'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.placeholder = d.placeholder || t('typeNum'); inp.autocomplete = 'off';
+          inp.addEventListener('keydown', e => { if (e.key === 'Enter') send.click(); });
+          wrap.appendChild(inp); if (unit) wrap.appendChild(el('span', 'unit', unit));
+          box.appendChild(wrap); box.appendChild(el('div', 'fhint', t('closest')));
+          collect = () => { const n = parseFloat(String(inp.value).replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : null; };
+        }
+      } else if (type === 'match'){
+        const rights = toArr(d.rights), sels = [];
+        toArr(d.lefts).forEach((l, i) => {
+          const row = el('div', 'mrow'); row.appendChild(el('div', 'mlab', l));
+          const sel = el('select', 'msel'); sel.appendChild(new Option(t('pick'), ''));
+          rights.forEach((r, k) => sel.appendChild(new Option(r, k)));
+          row.appendChild(sel); box.appendChild(row); sels.push(sel);
+        });
+        collect = () => sels.every(s => s.value !== '') ? sels.map(s => parseInt(s.value, 10)) : null;
+      }
+      send.addEventListener('click', () => {
+        const v = collect();
+        if (v == null){ send.classList.add('shake'); setTimeout(() => send.classList.remove('shake'), 400); return; }
+        if (submit(v)) lockForm();
+      });
+      box.appendChild(send);
+      if (d.answered != null) lockForm();
+    }
     show('vQuestion');
     cancelAnimationFrame(barRaf);
     (function anim(){
@@ -238,16 +351,23 @@
       if (left > 0) barRaf = requestAnimationFrame(anim);
     })();
   }
-  function answer(i, btn){
+  function lockForm(){
     const box = $('qOpts');
-    if (!current || box.classList.contains('locked')) return;
-    // czas od pojawienia się pytania (z uwzględnieniem dołączenia w trakcie)
+    box.classList.add('locked');
+    box.querySelectorAll('input, select, button').forEach(e => e.disabled = true);
+    if (!box.querySelector('.sent')){ const s = document.createElement('div'); s.className = 'sent'; s.textContent = '✓ ' + t('sent'); box.appendChild(s); }
+  }
+  const fmtN = v => String(Math.round(v * 1000) / 1000).replace('.', lang === 'pl' ? ',' : '.');
+  // wysłanie odpowiedzi (raz na pytanie)
+  function submit(v){
+    if (!current || answeredQ[current.qid] != null) return false;
     const elapsed = Math.max(0, serverNow() - current.startAt);
-    box.classList.add('locked'); btn.classList.add('mine');
     if (navigator.vibrate) navigator.vibrate(30);
-    answeredQ[current.qid] = i;
-    if (room) room.child('answers/' + current.qid + '/' + pid).set({ index:i, elapsedMs:Math.round(elapsed), at:firebase.database.ServerValue.TIMESTAMP })
-      .catch(() => { setStatus('reconnecting', 'err'); });
+    answeredQ[current.qid] = current.type === 'choice' ? v : 0;
+    const rec = { v, elapsedMs:Math.round(elapsed), at:firebase.database.ServerValue.TIMESTAMP };
+    if (current.type === 'choice') rec.index = v;
+    if (room) room.child('answers/' + current.qid + '/' + pid).set(rec).catch(() => { setStatus('reconnecting', 'err'); });
+    return true;
   }
 
   /* ---------- wynik ---------- */
@@ -261,9 +381,14 @@
     $('rTime').textContent = d.ms != null && d.ms >= 0 ? fmt(d.ms) : '–';
     $('rRank').textContent = d.rank > 0 ? d.rank + '/' + d.of : '–';
     $('rScore').textContent = d.score;
-    const same = lastQuestion && lastQuestion.qid === d.qid;
-    const opt = same ? (lastQuestion.options[d.correctIndex] || (lastQuestion.optionImages && lastQuestion.optionImages[d.correctIndex] ? '🖼' : '')) : null;
-    $('rCorrect').hidden = d.correct || !opt;
+    const same = lastQuestion && lastQuestion.qid === d.qid && (d.qtype || 'choice') === 'choice' && lastQuestion.options;
+    const opt = same ? (toArr(lastQuestion.options)[d.correctIndex] || (lastQuestion.optionImages && toArr(lastQuestion.optionImages)[d.correctIndex] ? '🖼' : '')) : null;
+    $('rCorrect').hidden = d.correct || (!opt && !d.correctText);
+    if (!opt && d.correctText && !d.correct){ $('rCorrect').innerHTML = ''; $('rCorrect').append(t('correctWas')); const b = document.createElement('b'); b.textContent = d.correctText; $('rCorrect').append(b); }
+    $('rYours').hidden = !d.yours || (d.qtype || 'choice') === 'choice';
+    $('rYours').textContent = d.yours ? t('yours') + d.yours : '';
+    if (!d.correct && d.partial > 0 && d.qtype !== 'number'){ $('rTitle').textContent = t('partial') + ' (' + d.partial + '%)'; $('rEmoji').textContent = '🟡'; }
+    if (d.qtype === 'number' && !d.correct && d.gained > 0){ $('rTitle').textContent = t('nearly'); $('rEmoji').textContent = '🎯'; }
     if (opt){ $('rCorrect').innerHTML = ''; $('rCorrect').append(t('correctWas')); const b = document.createElement('b'); b.textContent = LETTERS[d.correctIndex] + '. ' + opt; $('rCorrect').append(b);
       const ci = lastQuestion.optionImages && lastQuestion.optionImages[d.correctIndex];
       if (ci){ const im = document.createElement('img'); im.src = ci; im.alt = ''; im.className = 'cw-img'; $('rCorrect').append(im); } }
@@ -314,15 +439,16 @@
     if (st.lang && st.lang !== lang){ lang = st.lang; renderTexts(); }
     if (st.phase === 'question'){
       if (lastScreen === 'question' && current && current.qid === st.qid) return;
-      const d = Object.assign({}, st, { options: toArr(st.options), optionImages: toArr(st.optionImages) });
+      const d = Object.assign({}, st, { options: toArr(st.options), optionImages: toArr(st.optionImages), type: st.type || 'choice' });
       d.remainingMs = Math.max(0, Math.min(d.limitMs, d.limitMs - (serverNow() - d.startAt)));
       if (answeredQ[st.qid] != null) d.answered = answeredQ[st.qid];
       if (d.remainingMs <= 0 && d.answered == null){ showWait(true); return; }
       showQuestion(d);
       // po odświeżeniu telefonu sprawdź, czy już odpowiedziano na to pytanie
       if (d.answered == null) room.child('answers/' + st.qid + '/' + pid).once('value').then(s => {
-        const v = s.val(); if (v && current && current.qid === st.qid){ answeredQ[st.qid] = v.index;
-          const box = $('qOpts'); box.classList.add('locked'); const m = box.children[v.index]; if (m) m.classList.add('mine'); }
+        const v = s.val(); if (v && current && current.qid === st.qid){
+          if (current.type === 'choice'){ answeredQ[st.qid] = v.index; const box = $('qOpts'); box.classList.add('locked'); const m = box.children[v.index]; if (m) m.classList.add('mine'); }
+          else { answeredQ[st.qid] = 0; lockForm(); } }
       });
     } else if (st.phase === 'reveal' || st.phase === 'board'){
       if (myResult && myResult.type === 'result' && myResult.qid === st.qid){ if (lastScreen !== 'result' || !lastResult || lastResult.qid !== st.qid) showResult(myResult); }

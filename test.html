@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Test obciążenia</title>
-<script src="config.js?v=6"></script>
-<script src="brand.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="brand.js?v=7"></script>
 <style>
   :root{ --bg:#0E1020; --surface:#181B33; --text:#fff; --muted:#9AA0C3; --primary:#6C5CE7; --accent:#FFC531; --correct:#22C55E; --wrong:#EF4444;
     --font-heading:system-ui, sans-serif; --font-body:system-ui, sans-serif; --heading-style:normal; --line:color-mix(in srgb, var(--text) 14%, transparent); }
@@ -132,10 +132,18 @@
         const left = Math.max(0, st.startAt + st.limitMs - now() - 800);
         const wait = Math.max(0, st.startAt - now()) + Math.min(left, dMin + Math.random() * (dMax - dMin));
         const nOpt = Array.isArray(st.options) ? st.options.length : Object.keys(st.options || {}).length || 2;
+        const arr = v => Array.isArray(v) ? v : Object.values(v || {});
+        const randV = () => { const ty = st.type || 'choice';
+          if (ty === 'multi') return [Math.floor(Math.random() * nOpt)];
+          if (ty === 'text') return 'bot';
+          if (ty === 'blanks') return Array.from({ length: st.nBlanks || 1 }, () => 'bot');
+          if (ty === 'number') return st.slider ? st.min + Math.random() * (st.max - st.min) : Math.round(Math.random() * 3000);
+          if (ty === 'match') return arr(st.lefts).map(() => Math.floor(Math.random() * arr(st.rights).length));
+          return Math.floor(Math.random() * nOpt); };
         const qid = st.qid;
         bot.timers.push(setTimeout(() => {
           if (!running) return;
-          room.child('answers/' + qid + '/' + pid).set({ index:Math.floor(Math.random() * nOpt), elapsedMs:Math.max(0, Math.round(now() - st.startAt)), at:firebase.database.ServerValue.TIMESTAMP })
+          room.child('answers/' + qid + '/' + pid).set({ v:randV(), elapsedMs:Math.max(0, Math.round(now() - st.startAt)), at:firebase.database.ServerValue.TIMESTAMP })
             .then(() => { Q(qid).answers++; totalAnswers++; render(); })
             .catch(e => { fails++; log(name + ': odpowiedź odrzucona (' + (e.code || e.message) + ')'); });
         }, wait));

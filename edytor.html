@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Edytor pytań</title>
-<script src="config.js?v=6"></script>
-<script src="brand.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="brand.js?v=7"></script>
+<script src="quiz-core.js?v=7"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -41,10 +42,10 @@
   .num{ font-family:var(--font-heading); font-style:var(--heading-style); font-weight:800; font-size:24px; color:var(--primary); min-width:44px; }
   .card-top .sp{ flex:1; }
   .card-top label{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
-  select, textarea, input[type=text]{ font:500 15px var(--font-body); color:var(--text); background:var(--field); border:1px solid var(--line); border-radius:10px; outline:none; }
+  select, textarea, input[type=text], input[type=number]{ font:500 15px var(--font-body); color:var(--text); background:var(--field); border:1px solid var(--line); border-radius:10px; outline:none; }
   select{ padding:6px 8px; font-size:13px; }
   textarea{ width:100%; padding:10px 12px; resize:vertical; min-height:56px; line-height:1.45; font-weight:600; font-size:16px; }
-  textarea:focus, input[type=text]:focus{ border-color:var(--primary); }
+  textarea:focus, input[type=text]:focus, input[type=number]:focus{ border-color:var(--primary); }
   .answers{ display:flex; flex-direction:column; gap:8px; }
   .ans{ display:flex; align-items:center; gap:10px; }
   .ans .L{ flex:0 0 34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; }
@@ -56,6 +57,20 @@
   .x{ background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:4px 6px; border-radius:6px; }
   .x:hover{ color:var(--wrong); }
   .err{ color:var(--wrong); font-size:12px; font-weight:600; }
+  .tsel{ font-weight:700; }
+  .grid{ display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; }
+  .fld{ display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted); flex:1; min-width:170px; }
+  .fld.wide{ flex-basis:100%; }
+  .fld input, .fld textarea{ padding:9px 12px; }
+  .chk{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer; padding:8px 0; }
+  .chk input{ width:18px; height:18px; accent-color:var(--primary); }
+  .help{ color:var(--muted); font-size:12px; line-height:1.5; }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .pairs{ display:flex; flex-direction:column; gap:8px; }
+  .pair{ display:flex; gap:10px; align-items:center; }
+  .pair input{ flex:1; padding:9px 12px; }
+  .tbody{ display:flex; flex-direction:column; gap:10px; }
+  textarea[data-f="template"]{ font:600 15px/1.5 var(--font-body); }
   .qimg{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
   .qimg img{ max-height:160px; max-width:100%; border-radius:10px; border:1px solid var(--line); background:var(--field); }
   .qimg-btns{ display:flex; gap:8px; }
@@ -104,7 +119,7 @@
 
 <dialog id="dlg">
   <h2>Tryb tekstowy</h2>
-  <p>Pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką <b>*</b> na początku. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Zdjęcie pytania: druga linia <b>[zdjęcie] plik.jpg</b>; zdjęcie odpowiedzi: <b>Tekst [img] plik.jpg</b> (albo samo <b>[img] plik.jpg</b>). Możesz tu wkleić całą listę pytań naraz.</p>
+  <p><b>Dotyczy tylko pytań ABCD.</b> Pytanie w pierwszej linii, pod nim odpowiedzi (po jednej w linii), poprawną oznacz gwiazdką <b>*</b> na początku. Pusta linia oddziela pytania. Opcjonalnie <b>[30s]</b> na końcu pytania = własny limit czasu. Zdjęcie pytania: druga linia <b>[zdjęcie] plik.jpg</b>; zdjęcie odpowiedzi: <b>Tekst [img] plik.jpg</b> (albo samo <b>[img] plik.jpg</b>). Możesz tu wkleić całą listę pytań naraz.</p>
   <textarea id="dlgText" spellcheck="false"></textarea>
   <div class="dlg-actions">
     <button class="btn" id="dlgCopy">Kopiuj</button>
@@ -117,152 +132,145 @@
 <script>
 (() => {
   const CFG = window.QUIZ_CONFIG || {};
-  const DEF = (CFG.scoring && CFG.scoring.timeLimitSec) || 20;
-  const KEY = 'eq_questions';
+  const QC = window.QuizCore;
+  const SC = Object.assign({ timeLimitSec:20 }, CFG.scoring || {});
+  const KEY = 'eq_items';
   const LETTERS = 'ABCDEF';
   const MAX_ANS = 6;
   const $ = id => document.getElementById(id);
   const store = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
-
-  /* ---- format tekstowy <-> lista pytań ---- */
-  function parse(text){
-    const out = [];
-    String(text || '').split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).forEach(block => {
-      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-      if (!lines.length) return;
-      let prompt = lines[0], limit = DEF;
-      const m = prompt.match(/\[(\d+)\s*s?\]\s*$/i);
-      if (m){ limit = parseInt(m[1], 10); prompt = prompt.slice(0, m.index).trim(); }
-      let image = '', rest = lines.slice(1);
-      if (rest.length && /^\[zdj[eę]cie\]/i.test(rest[0])){ image = rest[0].replace(/^\[zdj[eę]cie\]\s*/i, '').trim(); rest = rest.slice(1); }
-      const answers = [], images = []; let correct = -1;
-      rest.forEach(l => {
-        if (l.startsWith('*')){ correct = answers.length; l = l.slice(1).trim(); }
-        const k = l.indexOf('[img]');
-        answers.push(k >= 0 ? l.slice(0, k).trim() : l);
-        images.push(k >= 0 ? l.slice(k + 5).trim() : '');
-      });
-      out.push({ prompt, image, answers, images, correct, limit });
-    });
-    return out;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const problems = q => QC.problems(q);
+  const configItems = () => (Array.isArray(CFG.questionsList) && CFG.questionsList.length ? CFG.questionsList : QC.parseText(CFG.questions || '', SC)).map(QC.normalizeItem);
+  function blank(type){
+    const q = QC.normalizeItem({ type });
+    if (type === 'choice' || type === 'multi'){ q.answers = ['', '', '', '']; q.images = ['', '', '', '']; }
+    if (type === 'match') q.pairs = [{ left:'', right:'' }, { left:'', right:'' }, { left:'', right:'' }];
+    if (type === 'number'){ q.min = 0; q.max = 100; q.step = 1; }
+    return q;
   }
-  function serialize(qs){
-    return qs.map(q => {
-      const head = q.prompt.replace(/\s+/g, ' ').trim() + (q.limit && q.limit !== DEF ? ' [' + q.limit + 's]' : '');
-      const lines = [head];
-      if (q.image) lines.push('[zdjęcie] ' + q.image);
-      q.answers.forEach((a, i) => {
-        const txt = a.replace(/\s+/g, ' ').trim().replace(/^\*+/, '').replace(/\[img\]/g, '');
-        const img = (q.images || [])[i];
-        lines.push((i === q.correct ? '*' : '') + (img ? (txt ? txt + ' ' : '') + '[img] ' + img : txt));
-      });
-      return lines.join('\n');
-    }).join('\n\n');
-  }
-  function problems(q){
-    const p = [];
-    if (!q.prompt.trim()) p.push('brak treści pytania');
-    const has = i => !!(q.answers[i] && q.answers[i].trim()) || !!(q.images && q.images[i]);
-    const filled = q.answers.filter((a, i) => has(i)).length;
-    if (filled < 2) p.push('potrzebne co najmniej 2 odpowiedzi');
-    if (q.answers.some((a, i) => !has(i))) p.push('pusta odpowiedź (wpisz tekst albo dodaj zdjęcie)');
-    if (q.correct < 0 || !has(q.correct)) p.push('zaznacz poprawną odpowiedź');
-    return p;
+  function retype(q, type){
+    // zmiana typu: zachowaj treść i zdjęcie, resztę ustaw domyślnie (odpowiedzi ABCD zostają przy wyborze/wielokrotnym)
+    const n = blank(type);
+    n.prompt = q.prompt; n.image = q.image; n.limit = q.limit; n.label = '';
+    if ((type === 'choice' || type === 'multi') && q.answers.length){ n.answers = q.answers.slice(); n.images = q.images.slice();
+      if (type === 'multi' && q.correct >= 0) n.correctSet = [q.correct];
+      if (type === 'choice' && q.correctSet.length) n.correct = q.correctSet[0]; }
+    return n;
   }
 
-  let qs = parse(store.get(KEY) || CFG.questions || '');
-  let onServer = false;            // czy pytania są już zapisane na serwerze
-  const fromEditor = () => onServer;
+  let qs = (() => { try{ const d = JSON.parse(store.get(KEY) || 'null'); if (Array.isArray(d)) return d.map(QC.normalizeItem); }catch(e){} return configItems(); })();
+  let onServer = false;
 
-  /* ---- serwer: pytania w Firebase, widoczne na każdym komputerze ---- */
+  /* ---- serwer ---- */
   const ROOM = String(new URLSearchParams(location.search).get('room') || CFG.roomId || 'quiz').replace(/[^\w-]/g, '');
-  let qRef = null, myLastWrite = 0, serverOk = false;
-  const toArr = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
-  function normalize(list){
-    return toArr(list).filter(Boolean).map(q => {
-      const answers = toArr(q.answers).map(a => a == null ? '' : String(a));
-      const images = toArr(q.images).map(a => a || '');
-      while (images.length < answers.length) images.push('');
-      return { prompt:String(q.prompt || ''), image:q.image || '', answers, images:images.slice(0, answers.length),
-               correct: typeof q.correct === 'number' ? q.correct : -1, limit: q.limit || DEF };
-    });
-  }
-  function toServer(){ return qs.map(q => ({ prompt:q.prompt, image:q.image || '', answers:q.answers, images:(q.images || []).map(x => x || ''), correct:q.correct, limit:q.limit, ok: !problems(q).length })); }
+  let qRef = null, myLastWrite = 0;
+  const myId = Math.random().toString(36).slice(2, 10);
+  const toServer = () => qs.map(q => Object.assign({}, q, { ok: !problems(q).length,
+    value: q.value == null ? null : q.value, valueTo: q.valueTo == null ? null : q.valueTo, tolerance: q.tolerance == null ? null : q.tolerance }));
 
   /* ---- zapis ---- */
   let saveT = null, saving = false;
-  const myId = Math.random().toString(36).slice(2, 10);
   function save(){
     clearTimeout(saveT);
     saveT = setTimeout(() => {
-      // do quizu trafiają tylko kompletne pytania (niekompletne zostają w edytorze jako szkic w pamięci)
-      // kopia zapasowa w przeglądarce (gdyby zabrakło internetu)
-      store.set(KEY, serialize(qs.filter(q => !problems(q).length)));
-      if (qs.some(q => problems(q).length)) store.set(KEY + '_draft', JSON.stringify(qs)); else store.del(KEY + '_draft');
+      store.set(KEY, JSON.stringify(qs));
       if (qRef){
-        saving = true; renderStatus();
-        myLastWrite = Date.now();
-        qRef.set({ list: toServer(), updatedAt: firebase.database.ServerValue.TIMESTAMP, by: myId })
-          .then(() => { onServer = true; serverOk = true; saving = false; renderStatus(); })
-          .catch(e => { saving = false; serverOk = false; renderStatus();
-            toast('⚠ Nie udało się zapisać na serwerze (' + (e.code || e.message) + '). Zmiany są tylko w tej przeglądarce.', true); });
+        saving = true; renderStatus(); myLastWrite = Date.now();
+        qRef.set({ list: JSON.parse(JSON.stringify(toServer())), updatedAt: firebase.database.ServerValue.TIMESTAMP, by: myId })
+          .then(() => { onServer = true; saving = false; renderStatus(); })
+          .catch(e => { saving = false; renderStatus(); toast('⚠ Nie udało się zapisać na serwerze (' + (e.code || e.message) + '). Zmiany są tylko w tej przeglądarce.', true); });
       }
       renderStatus();
-    }, 250);
+    }, 300);
   }
   function renderStatus(){
     const ok = qs.filter(q => !problems(q).length).length, bad = qs.length - ok;
     const st = $('status');
-    st.className = 'st' + (bad ? ' warn' : '');
     const where = !qRef ? ' (tylko w tej przeglądarce)' : saving ? '' : onServer ? ' · na serwerze, widoczne na każdym komputerze' : ' (z config.js)';
+    st.className = 'st' + (bad ? ' warn' : '');
     st.innerHTML = (bad ? '<b>' + bad + ' do poprawienia</b> · ' : saving ? '<b>zapisywanie…</b> · ' : '<b>✓ zapisano</b> · ') + ok + ' pytań w quizie' + where;
   }
-  // przywróć niezapisany szkic (np. pytania z brakami), jeśli pasuje do zapisanej wersji
-  try{
-    const d = JSON.parse(store.get(KEY + '_draft') || 'null');
-    if (Array.isArray(d)) d.forEach(q => { q.image = q.image || ''; q.images = q.images || q.answers.map(() => ''); });
-    if (Array.isArray(d) && fromEditor() && serialize(d.filter(q => !problems(q).length)) === store.get(KEY)) qs = d;
-  }catch(e){}
 
-  /* ---- render ---- */
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  /* ---- render kart ---- */
   const times = [10, 15, 20, 25, 30, 45, 60, 90];
+  const TYPE_OPTS = [['choice','ABCD / Prawda-Fałsz (jedna odpowiedź)'], ['multi','Wielokrotny wybór'], ['text','Odpowiedź wpisywana / rozsypanka'],
+    ['blanks','Uzupełnij luki'], ['number','Liczba / rok / suwak – kto najbliżej'], ['match','Dopasuj pary']];
+  const field = (label, html, wide) => '<label class="fld' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' + html + '</label>';
+  const inp = (f, v, ph, type) => '<input type="' + (type || 'text') + '" data-f="' + f + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph || '') + '"' + (type === 'number' ? ' step="any"' : '') + '>';
+
+  function bodyHtml(q, i){
+    if (q.type === 'choice' || q.type === 'multi'){
+      const multi = q.type === 'multi';
+      return '<div class="answers">' + q.answers.map((a, j) => {
+        const ok = multi ? q.correctSet.includes(j) : j === q.correct;
+        return '<div class="ans' + (ok ? ' ok' : '') + '" data-j="' + j + '">' +
+          '<div class="L" style="background:var(--a' + (j % 4) + ')">' + LETTERS[j] + '</div>' +
+          (q.images[j] ? '<button class="athumb" data-act="aimgDel" title="Usuń zdjęcie odpowiedzi"><img src="' + esc(q.images[j]) + '" alt=""><span>✕</span></button>' : '') +
+          '<input type="text" data-act="ans" value="' + esc(a) + '" placeholder="Odpowiedź ' + LETTERS[j] + '">' +
+          (q.images[j] ? '' : '<button class="x" data-act="aimgFile" title="Dodaj zdjęcie do odpowiedzi (opcjonalnie)">🖼</button>') +
+          '<label class="ok-pick"><input type="' + (multi ? 'checkbox' : 'radio') + '" name="ok' + i + '" data-act="ok"' + (ok ? ' checked' : '') + '> poprawna</label>' +
+          (q.answers.length > 2 ? '<button class="x" data-act="delAns" title="Usuń odpowiedź">✕</button>' : '') + '</div>';
+      }).join('') + '</div><div class="row">' + (q.answers.length < MAX_ANS ? '<button class="btn sm" data-act="addAns">+ odpowiedź</button>' : '') +
+        (!multi ? '<button class="btn sm" data-act="presetTF">Ustaw: Prawda / Fałsz</button>' : '') + '</div>';
+    }
+    if (q.type === 'text'){
+      return '<div class="grid">' + field('Poprawna odpowiedź (inne dopuszczalne wersje oddziel znakiem |)', inp('accepted', q.accepted, 'np. Reverse Mentoring | mentoring odwrócony'), true) +
+        field('Podpowiedź w polu na telefonie (opcjonalnie)', inp('placeholder', q.placeholder, QC.defaultPlaceholder(q))) +
+        '<label class="chk"><input type="checkbox" data-f="scramble"' + (q.scramble ? ' checked' : '') + '> Rozsypanka: pokaż wymieszane litery pierwszej odpowiedzi</label></div>' +
+        '<div class="help">Wielkość liter, polskie znaki, spacje i drobne literówki nie mają znaczenia. Zaliczy też odpowiedź, która zawiera szukane słowo (np. „w listopadzie” → „listopad”).</div>';
+    }
+    if (q.type === 'blanks'){
+      return field('Tekst z lukami: lukę oznacz [[odpowiedź]], dopuszczalne wersje oddziel |. Każda linia = osobne pole na ekranie.',
+        '<textarea data-f="template" rows="4" placeholder="E – Environmental\nS – [[Social]]\nG – [[Governance|Corporate Governance]]">' + esc(q.template) + '</textarea>', true);
+    }
+    if (q.type === 'number'){
+      return '<div class="grid">' + field('Poprawna wartość', inp('value', q.value, 'np. 17', 'number')) + field('do (gdy odpowiedzią jest zakres, opcjonalnie)', inp('valueTo', q.valueTo, '', 'number')) +
+        field('Jednostka (opcjonalnie)', inp('unit', q.unit, 'np. %, mln zł, litrów')) +
+        field('Tolerancja (opcjonalnie)', inp('tolerance', q.tolerance, 'auto', 'number')) +
+        '<label class="chk"><input type="checkbox" data-f="slider"' + (q.slider ? ' checked' : '') + '> Suwak zamiast wpisywania</label>' +
+        (q.slider ? field('Suwak od', inp('min', q.min, '0', 'number')) + field('do', inp('max', q.max, '100', 'number')) + field('krok', inp('step', q.step, '1', 'number')) : '') + '</div>' +
+        '<div class="help">Najbliższe odpowiedzi dostają pełne punkty, pozostałe proporcjonalnie mniej — do zera przy odległości równej tolerancji (domyślnie: rok ±20, suwak pół zakresu, inne liczby ±100% wartości).</div>';
+    }
+    if (q.type === 'match'){
+      return '<div class="pairs">' + q.pairs.map((p, j) => '<div class="pair" data-j="' + j + '">' +
+        '<input type="text" data-act="pl" value="' + esc(p.left) + '" placeholder="Pojęcie, np. Scope ' + (j + 1) + '"><span>→</span>' +
+        '<input type="text" data-act="pr" value="' + esc(p.right) + '" placeholder="Pasująca definicja">' +
+        (q.pairs.length > 2 ? '<button class="x" data-act="delPair">✕</button>' : '') + '</div>').join('') + '</div>' +
+        (q.pairs.length < 6 ? '<div class="row"><button class="btn sm" data-act="addPair">+ para</button></div>' : '') +
+        '<div class="help">Na telefonach prawa kolumna jest wymieszana — gracz dobiera definicję do każdego pojęcia.</div>';
+    }
+    return '';
+  }
   function render(focus){
     const list = $('list');
     if (!qs.length){ list.innerHTML = '<div class="empty">Brak pytań. Kliknij „+ Dodaj pytanie”.</div>'; renderStatus(); return; }
     list.innerHTML = qs.map((q, i) => {
       const pr = problems(q);
-      const tOpts = Array.from(new Set(times.concat([q.limit]))).sort((a, b) => a - b)
-        .map(s => '<option value="' + s + '"' + (s === q.limit ? ' selected' : '') + '>' + s + ' s' + (s === DEF ? ' (domyślnie)' : '') + '</option>').join('');
+      const lim = q.limit || QC.defaultLimit(q.type, SC);
+      const tOpts = Array.from(new Set(times.concat([lim]))).sort((a, b) => a - b)
+        .map(s => '<option value="' + s + '"' + (s === lim ? ' selected' : '') + '>' + s + ' s</option>').join('');
       return '<div class="card' + (pr.length ? ' bad' : '') + '" data-i="' + i + '">' +
         '<div class="card-top"><div class="num">' + (i + 1) + '</div>' +
+          '<select data-act="type" class="tsel">' + TYPE_OPTS.map(([v, l]) => '<option value="' + v + '"' + (v === q.type ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
           '<label>Czas <select data-act="limit">' + tOpts + '</select></label><div class="sp"></div>' +
           '<button class="btn sm" data-act="up" ' + (i === 0 ? 'disabled' : '') + ' title="W górę">↑</button>' +
           '<button class="btn sm" data-act="down" ' + (i === qs.length - 1 ? 'disabled' : '') + ' title="W dół">↓</button>' +
-          '<button class="btn sm" data-act="dup" title="Duplikuj">Duplikuj</button>' +
-          '<button class="btn sm danger" data-act="del" title="Usuń pytanie">Usuń</button></div>' +
-        '<textarea data-act="prompt" rows="2" placeholder="Treść pytania…">' + esc(q.prompt) + '</textarea>' +
+          '<button class="btn sm" data-act="dup">Duplikuj</button>' +
+          '<button class="btn sm danger" data-act="del">Usuń</button></div>' +
+        '<div class="grid">' + field('Plakietka nad pytaniem', inp('label', q.label, QC.defaultLabel(q))) + '</div>' +
+        '<textarea data-f="prompt" rows="2" placeholder="Treść pytania… (puste pytanie + zdjęcie = na ekranie samo zdjęcie)">' + esc(q.prompt) + '</textarea>' +
         '<div class="qimg">' + (q.image
           ? '<img src="' + esc(q.image) + '" alt=""><div class="qimg-btns"><button class="btn sm" data-act="qimgFile">Zmień zdjęcie</button><button class="btn sm danger" data-act="qimgDel">Usuń zdjęcie</button></div>'
           : '<button class="btn sm" data-act="qimgFile">🖼 Dodaj zdjęcie (opcjonalnie)</button><button class="btn sm" data-act="qimgLink">🔗 z linku / pliku w repo</button>') + '</div>' +
-        '<div class="answers">' + q.answers.map((a, j) =>
-          '<div class="ans' + (j === q.correct ? ' ok' : '') + '" data-j="' + j + '">' +
-            '<div class="L" style="background:var(--a' + (j % 4) + ')">' + LETTERS[j] + '</div>' +
-            ((q.images || [])[j] ? '<button class="athumb" data-act="aimgDel" title="Usuń zdjęcie odpowiedzi"><img src="' + esc(q.images[j]) + '" alt=""><span>✕</span></button>' : '') +
-            '<input type="text" data-act="ans" value="' + esc(a) + '" placeholder="Odpowiedź ' + LETTERS[j] + ((q.images || [])[j] ? ' (opcjonalnie — jest zdjęcie)' : '') + '">' +
-            ((q.images || [])[j] ? '' : '<button class="x" data-act="aimgFile" title="Dodaj zdjęcie do odpowiedzi (opcjonalnie)">🖼</button>') +
-            '<label class="ok-pick"><input type="radio" name="ok' + i + '" data-act="ok"' + (j === q.correct ? ' checked' : '') + '> poprawna</label>' +
-            (q.answers.length > 2 ? '<button class="x" data-act="delAns" title="Usuń odpowiedź">✕</button>' : '') +
-          '</div>').join('') + '</div>' +
-        '<div class="card-top">' + (q.answers.length < MAX_ANS ? '<button class="btn sm" data-act="addAns">+ odpowiedź</button>' : '') +
-          '<div class="sp"></div>' + (pr.length ? '<span class="err">⚠ ' + pr.join(' · ') + '</span>' : '') + '</div>' +
+        '<div class="tbody">' + bodyHtml(q, i) + '</div>' +
+        '<div class="card-top"><div class="sp"></div>' + (pr.length ? '<span class="err">⚠ ' + pr.join(' · ') + '</span>' : '') + '</div>' +
       '</div>';
     }).join('');
     renderStatus();
-    if (focus) { const el = list.querySelector(focus); if (el){ el.focus(); el.scrollIntoView({ block:'center', behavior:'smooth' }); } }
+    if (focus){ const el = list.querySelector(focus); if (el){ el.focus(); el.scrollIntoView({ block:'center', behavior:'smooth' }); } }
   }
   function refreshCard(i){
-    // odśwież tylko oznaczenia błędów, bez przerysowania (żeby nie gubić kursora)
     const card = $('list').querySelector('.card[data-i="' + i + '"]'); if (!card) return;
     const pr = problems(qs[i]);
     card.classList.toggle('bad', !!pr.length);
@@ -272,72 +280,90 @@
     else if (e) e.remove();
   }
 
+  const NUMF = ['value', 'valueTo', 'tolerance', 'min', 'max', 'step'];
   $('list').addEventListener('input', e => {
     const card = e.target.closest('.card'); if (!card) return;
-    const i = +card.dataset.i, q = qs[i], act = e.target.dataset.act;
-    if (act === 'prompt') q.prompt = e.target.value.replace(/\n/g, ' ');
-    else if (act === 'ans') q.answers[+e.target.closest('.ans').dataset.j] = e.target.value;
+    const i = +card.dataset.i, q = qs[i], f = e.target.dataset.f, act = e.target.dataset.act;
+    if (f && e.target.type !== 'checkbox'){
+      let v = e.target.value;
+      if (f === 'prompt') v = v.replace(/\n/g, ' ');
+      if (NUMF.includes(f)){ const n = parseFloat(String(v).replace(',', '.')); v = isFinite(n) ? n : null; }
+      q[f] = v;
+    } else if (act === 'ans') q.answers[+e.target.closest('.ans').dataset.j] = e.target.value;
+    else if (act === 'pl') q.pairs[+e.target.closest('.pair').dataset.j].left = e.target.value;
+    else if (act === 'pr') q.pairs[+e.target.closest('.pair').dataset.j].right = e.target.value;
     else return;
     refreshCard(i); save();
   });
   $('list').addEventListener('change', e => {
     const card = e.target.closest('.card'); if (!card) return;
-    const i = +card.dataset.i, q = qs[i], act = e.target.dataset.act;
+    const i = +card.dataset.i, q = qs[i], act = e.target.dataset.act, f = e.target.dataset.f;
     if (act === 'limit'){ q.limit = parseInt(e.target.value, 10); save(); }
-    else if (act === 'ok'){ q.correct = +e.target.closest('.ans').dataset.j; render(); save(); }
+    else if (act === 'type'){ qs[i] = retype(q, e.target.value); render('.card[data-i="' + i + '"] .tbody input, .card[data-i="' + i + '"] .tbody textarea'); save(); }
+    else if (act === 'ok'){
+      const j = +e.target.closest('.ans').dataset.j;
+      if (q.type === 'multi'){ q.correctSet = e.target.checked ? Array.from(new Set(q.correctSet.concat([j]))) : q.correctSet.filter(x => x !== j); }
+      else q.correct = j;
+      render(); save();
+    }
+    else if (f && e.target.type === 'checkbox'){ q[f] = e.target.checked; render(); save(); }
   });
   $('list').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const card = b.closest('.card'); const i = +card.dataset.i, q = qs[i], act = b.dataset.act;
+    const J = () => +b.closest('[data-j]').dataset.j;
     if (act === 'up' && i > 0){ [qs[i - 1], qs[i]] = [qs[i], qs[i - 1]]; render(); }
     else if (act === 'down' && i < qs.length - 1){ [qs[i + 1], qs[i]] = [qs[i], qs[i + 1]]; render(); }
     else if (act === 'dup'){ qs.splice(i + 1, 0, JSON.parse(JSON.stringify(q))); render('.card[data-i="' + (i + 1) + '"] textarea'); }
     else if (act === 'del'){ if (!confirm('Usunąć pytanie ' + (i + 1) + '?')) return; qs.splice(i, 1); render(); }
     else if (act === 'addAns'){ q.answers.push(''); q.images.push(''); render('.card[data-i="' + i + '"] .ans:last-child input[type=text]'); }
+    else if (act === 'presetTF'){ q.answers = ['Prawda', 'Fałsz']; q.images = ['', '']; if (q.correct > 1) q.correct = -1; render(); }
+    else if (act === 'delAns'){ const j = J(); q.answers.splice(j, 1); q.images.splice(j, 1);
+      if (q.correct === j) q.correct = -1; else if (q.correct > j) q.correct--;
+      q.correctSet = q.correctSet.filter(x => x !== j).map(x => x > j ? x - 1 : x); render(); }
+    else if (act === 'addPair'){ q.pairs.push({ left:'', right:'' }); render('.card[data-i="' + i + '"] .pair:last-child input'); }
+    else if (act === 'delPair'){ q.pairs.splice(J(), 1); render(); }
     else if (act === 'qimgFile'){ pickImage(src => { q.image = src; render(); save(); }, 1280); return; }
     else if (act === 'qimgLink'){ const v = prompt('Link do zdjęcia (https://…) albo nazwa pliku wgranego do repo (np. foto1.jpg):', ''); if (!v || !v.trim()) return; q.image = v.trim(); render(); }
     else if (act === 'qimgDel'){ q.image = ''; render(); }
-    else if (act === 'aimgFile'){ const j = +b.closest('.ans').dataset.j; pickImage(src => { q.images[j] = src; render(); save(); }, 600); return; }
-    else if (act === 'aimgDel'){ const j = +b.closest('.ans').dataset.j; q.images[j] = ''; render(); }
-    else if (act === 'delAns'){ const j = +b.closest('.ans').dataset.j; q.answers.splice(j, 1); q.images.splice(j, 1);
-      if (q.correct === j) q.correct = -1; else if (q.correct > j) q.correct--; render(); }
+    else if (act === 'aimgFile'){ const j = J(); pickImage(src => { q.images[j] = src; render(); save(); }, 600); return; }
+    else if (act === 'aimgDel'){ q.images[J()] = ''; render(); }
     else return;
     save();
   });
-  $('btnAdd').addEventListener('click', () => {
-    qs.push({ prompt:'', image:'', answers:['', '', '', ''], images:['', '', '', ''], correct:-1, limit:DEF });
-    render('.card:last-child textarea'); save();
-  });
+  $('btnAdd').addEventListener('click', () => { qs.push(blank('choice')); render('.card:last-child textarea'); save(); });
 
-  /* ---- tryb tekstowy ---- */
-  $('btnText').addEventListener('click', () => { $('dlgText').value = serialize(qs); $('dlg').showModal(); });
+  /* ---- tryb tekstowy: import pytań ABCD z tekstu ---- */
+  $('btnText').addEventListener('click', () => { $('dlgText').value = QC.toText(qs); $('dlg').showModal(); });
   $('dlgCancel').addEventListener('click', () => $('dlg').close());
   $('dlgCopy').addEventListener('click', () => { navigator.clipboard && navigator.clipboard.writeText($('dlgText').value).then(() => toast('Skopiowano')); });
-  $('dlgApply').addEventListener('click', () => { qs = parse($('dlgText').value); $('dlg').close(); render(); save(); toast('Zastosowano: ' + qs.length + ' pytań'); });
+  $('dlgApply').addEventListener('click', () => {
+    const imported = QC.parseText($('dlgText').value, SC).map(QC.normalizeItem);
+    if (!imported.length){ toast('Nie rozpoznano żadnego pytania', true); return; }
+    if (!confirm('Zastąpić pytania ABCD tymi z tekstu? Pytania innych typów zostaną (na końcu listy).')) return;
+    qs = imported.concat(qs.filter(q => q.type !== 'choice'));
+    $('dlg').close(); render(); save(); toast('Zastosowano: ' + imported.length + ' pytań ABCD');
+  });
 
   /* ---- przywróć / pobierz ---- */
   $('btnRestore').addEventListener('click', () => {
     if (!confirm('Zastąpić wszystkie pytania wersją z config.js? Zmiany z edytora przepadną.')) return;
-    store.del(KEY); store.del(KEY + '_draft');
-    if (qRef) qRef.remove().catch(() => {});
-    onServer = false;
-    qs = parse(CFG.questions || ''); render(); renderStatus(); toast('Przywrócono pytania z config.js');
+    store.del(KEY);
+    qs = configItems(); render(); save(); toast('Przywrócono pytania z config.js');
   });
   $('btnDownload').addEventListener('click', async () => {
-    const bad = qs.filter(q => problems(q).length).length;
-    if (bad && !confirm(bad + ' pytań ma braki i NIE trafi do pliku. Pobrać mimo to?')) return;
-    const text = serialize(qs.filter(q => !problems(q).length)).replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
     let src = null;
     try{ const r = await fetch('config.js', { cache:'no-store' }); if (r.ok) src = await r.text(); }catch(e){}
-    if (!src || !/questions:\s*`[\s\S]*?`/.test(src)){ alert('Nie udało się odczytać config.js — użyj „Tryb tekstowy → Kopiuj” i wklej pytania ręcznie.'); return; }
-    const out = src.replace(/questions:\s*`[\s\S]*?(?<!\\)`/, () => 'questions: `' + text + '`');
+    const json = JSON.stringify(qs.map(q => { const o = Object.assign({}, q); delete o.ok; return o; }), null, 2);
+    if (!src || !/\/\*LISTA\*\/[\s\S]*?\/\*KONIEC\*\//.test(src)){ alert('Nie udało się odczytać config.js w nowym formacie.'); return; }
+    const out = src.replace(/\/\*LISTA\*\/[\s\S]*?\/\*KONIEC\*\//, () => '/*LISTA*/' + json + '/*KONIEC*/');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([out], { type:'text/javascript;charset=utf-8' }));
     a.download = 'config.js'; a.click();
-    toast('Pobrano config.js — podmień go na GitHubie');
+    toast('Pobrano config.js (kopia zapasowa pytań)');
   });
 
-  /* ---- zdjęcia: wybór pliku, zmniejszenie i kompresja (żeby szybko szły na telefony) ---- */
+  /* ---- zdjęcia ---- */
   const fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.hidden = true; document.body.appendChild(fileIn);
   let onPicked = null, pickMax = 1280;
   function pickImage(cb, max){ onPicked = cb; pickMax = max; fileIn.value = ''; fileIn.click(); }
@@ -376,17 +402,14 @@
       const v = snap.val();
       if (first){
         first = false;
-        if (v && v.list){ qs = normalize(v.list); onServer = true; render(); }
-        else if (store.get(KEY)){ save(); toast('Przeniesiono pytania z tej przeglądarki na serwer'); }   // stare zmiany z edytora
+        if (v && v.list){ qs = QC.toArr(v.list).map(QC.normalizeItem); onServer = true; render(); }
         else renderStatus();
-        serverOk = true; return;
+        return;
       }
-      // zmiany z innego komputera — wczytaj, jeśli nikt tu akurat nie pisze
-      if (!v){ return; }
-      if (v.by === myId || saving || saveT && Date.now() - myLastWrite < 1500) return;
+      if (!v || v.by === myId || saving || Date.now() - myLastWrite < 1500) return;
       const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('list').contains(document.activeElement);
       if (typing) return;
-      qs = normalize(v.list); onServer = true; render(); toast('Wczytano zmiany z innego komputera');
+      qs = QC.toArr(v.list).map(QC.normalizeItem); onServer = true; render(); toast('Wczytano zmiany z innego komputera');
     }, e => { toast('⚠ Brak dostępu do serwera (' + (e.code || e.message) + ')', true); qRef = null; renderStatus(); });
   }
   initServer();
